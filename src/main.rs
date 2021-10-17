@@ -1,4 +1,61 @@
-use std::{env, error, process};
+use serde::Deserialize;
+use std::{env, error, fmt, process};
+
+#[derive(Debug, Deserialize)]
+struct Response {
+    query: Option<Box<serde_json::value::RawValue>>,
+
+    errors: Option<ResponseErrors>,
+    warnings: Option<ResponseErrors>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ResponseErrors(Vec<ResponseError>);
+
+#[derive(Debug, Deserialize)]
+struct ResponseError {
+    code: String,
+    data: Option<serde_json::Value>,
+    module: String,
+    text: String,
+}
+
+#[derive(Debug)]
+struct NoQueryError;
+
+impl fmt::Display for ResponseErrors {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for e in &self.0[..(self.0.len() - 1)] {
+            write!(f, "{}; ", e)?;
+        }
+        write!(f, "{}", self.0.last().unwrap())?;
+        Ok(())
+    }
+}
+
+impl error::Error for ResponseErrors {}
+
+impl fmt::Display for ResponseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "API error: [{}] {} {}",
+            self.module, self.code, self.text
+        )?;
+        if let Some(ref data) = self.data {
+            write!(f, " ({:?})", data)?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for NoQueryError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "API response contains no errors and no query")
+    }
+}
+
+impl error::Error for NoQueryError {}
 
 fn main() {
     process::exit(match run() {
@@ -110,6 +167,15 @@ fn run() -> Result<(), Box<dyn error::Error>> {
     log_header(reqwest::header::HeaderName::from_static(
         "mediawiki-api-error",
     ));
+
+    let response: Response = response.json()?;
+    if let Some(errors) = response.errors {
+        return Err(errors.into());
+    }
+    if let Some(warnings) = response.warnings {
+        return Err(warnings.into());
+    }
+    let query = response.query.ok_or(NoQueryError)?;
 
     todo!()
 }
