@@ -31,12 +31,13 @@ fn run() -> Result<(), Box<dyn error::Error>> {
         .long_about(
             format!(
                 "\
-Fetch the site configuration of a MediaWiki based wiki, and output rust code for creating a \
-configuration for `parse_wiki_text` specific to that wiki.  Write generated code to stdout.  Write \
-log messages to stderr.
-
-Maximum log level can be set in env variable `{}` to one of `off`, `error`, `warn`, `info`, \
-`debug`, `trace`.",
+                Fetch the site configuration of a MediaWiki based wiki, and output rust code for \
+                creating a configuration for `parse_wiki_text` specific to that wiki.  Write \
+                generated code to stdout.  Write log messages to stderr.\
+                \n\n\
+                Maximum log level can be set in env variable `{}` to one of `off`, `error`, \
+                `warn`, `info`, `debug`, `trace`.\
+                ",
                 log_var
             )
             .as_ref(),
