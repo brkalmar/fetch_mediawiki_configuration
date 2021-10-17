@@ -1,8 +1,16 @@
 [package]
+description = "Generate `parse_wiki_text` configuration code for a MediaWiki wiki"
+edition = "2018"
 name = "fetch_mediawiki_configuration"
 version = "0.1.0"
-edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies.clap]
+default-features = false
+version = "~2.33.3"
 
-[dependencies]
+[dependencies.log]
+features = ["max_level_trace", "release_max_level_info"]
+version = "0.4"
+
+[dependencies.simplelog]
+version = "0.10"

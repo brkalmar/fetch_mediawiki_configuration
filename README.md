@@ -11,14 +11,11 @@ Inferences and assumptions made are documented under [Implementation notes](#imp
 
 ## Usage
 
-To run the script:
+Use `cargo run --` followed by the arguments to run the script.
+Pass argument `--help` for more information:
 ```shell
-cargo run -- <domain>
+cargo run -- --help
 ```
-
-Fetches the site configuration of a MediaWiki based wiki, and outputs rust code for creating a configuration for [`parse_wiki_text`](https://docs.rs/parse_wiki_text) specific to that wiki.
-The domain name of the wiki (e.g. `en.wikipedia.org`) is taken as command line argument `<domain>`.
-The generated code is written to stdout.
 
 ## Implementation notes
 
