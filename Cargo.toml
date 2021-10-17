@@ -1,4 +1,5 @@
 [package]
+authors = ["Bence Kalmar <bkalmar1996@gmail.com>"]
 description = "Generate `parse_wiki_text` configuration code for a MediaWiki wiki"
 edition = "2018"
 name = "fetch_mediawiki_configuration"
@@ -11,6 +12,10 @@ version = "~2.33.3"
 [dependencies.log]
 features = ["max_level_trace", "release_max_level_info"]
 version = "0.4"
+
+[dependencies.reqwest]
+features = ["blocking", "deflate", "gzip", "json"]
+version = "0.11"
 
 [dependencies.simplelog]
 version = "0.10"
