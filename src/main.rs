@@ -1,7 +1,8 @@
 use serde::Deserialize;
-use std::{env, error, fmt, process};
+use std::{collections, env, error, fmt, process};
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 struct Response {
     query: Option<Box<serde_json::value::RawValue>>,
 
@@ -10,9 +11,59 @@ struct Response {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+struct Query {
+    extensiontags: Vec<ExtensionTag>,
+    general: General,
+    magicwords: Vec<MagicWord>,
+    namespacealiases: Vec<NamespaceAlias>,
+    namespaces: collections::BTreeMap<String, Namespace>,
+    protocols: Vec<Protocol>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(transparent)]
+struct ExtensionTag(String);
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+struct General {
+    linktrail: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+struct MagicWord {
+    aliases: Vec<String>,
+    case_sensitive: Option<bool>,
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+struct NamespaceAlias {
+    id: i64,
+    alias: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+struct Namespace {
+    id: i64,
+    name: String,
+    canonical: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(transparent)]
+struct Protocol(String);
+
+#[derive(Debug, Deserialize)]
+#[serde(transparent)]
 struct ResponseErrors(Vec<ResponseError>);
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
 struct ResponseError {
     code: String,
     data: Option<serde_json::Value>,
@@ -175,7 +226,9 @@ fn run() -> Result<(), Box<dyn error::Error>> {
     if let Some(warnings) = response.warnings {
         return Err(warnings.into());
     }
-    let query = response.query.ok_or(NoQueryError)?;
+
+    let query: Query = serde_json::from_str(response.query.ok_or(NoQueryError)?.get())?;
+    log::debug!("query = {:?}", query);
 
     todo!()
 }
