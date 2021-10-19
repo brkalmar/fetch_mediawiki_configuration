@@ -72,7 +72,11 @@ struct ResponseError {
 }
 
 #[derive(Debug)]
-struct NoQueryError;
+enum MalformedError {
+    ExtensionTag(String),
+    NoNamespaceCategory,
+    NoQuery,
+}
 
 impl fmt::Display for ResponseErrors {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -100,13 +104,21 @@ impl fmt::Display for ResponseError {
     }
 }
 
-impl fmt::Display for NoQueryError {
+impl fmt::Display for MalformedError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "API response contains no errors and no query")
+        use MalformedError::*;
+
+        write!(f, "malformed API response: ")?;
+        match self {
+            ExtensionTag(tag) => write!(f, "extension tag not of the form `<...>`: {:?}", tag)?,
+            NoQuery => write!(f, "no errors or warnings, and no query")?,
+            NoNamespaceCategory => write!(f, "no namespace `Category`")?,
+        }
+        Ok(())
     }
 }
 
-impl error::Error for NoQueryError {}
+impl error::Error for MalformedError {}
 
 fn main() {
     process::exit(match run() {
@@ -226,9 +238,100 @@ fn run() -> Result<(), Box<dyn error::Error>> {
     if let Some(warnings) = response.warnings {
         return Err(warnings.into());
     }
+    let query: Query = serde_json::from_str(response.query.ok_or(MalformedError::NoQuery)?.get())?;
+    log::debug!("query extensiontags: {}", query.extensiontags.len());
+    log::debug!("query general: {:?}", query.general);
+    log::debug!("query magicwords: {}", query.magicwords.len());
+    log::debug!("query namespacealiases: {}", query.namespacealiases.len());
+    log::debug!("query namespaces: {}", query.namespaces.len());
+    log::debug!("query protocols: {}", query.protocols.len());
 
-    let query: Query = serde_json::from_str(response.query.ok_or(NoQueryError)?.get())?;
-    log::debug!("query = {:?}", query);
+    let category_namespaces = extract_namespaces(&query, "Category")?;
+    log::info!(
+        "category namespaces: ({}) {:?}",
+        category_namespaces.len(),
+        category_namespaces
+    );
+    let file_namespaces = extract_namespaces(&query, "File")?;
+    log::info!(
+        "file namespaces: ({}) {:?}",
+        file_namespaces.len(),
+        file_namespaces
+    );
+
+    let extension_tags: collections::BTreeSet<_> = query
+        .extensiontags
+        .iter()
+        .map(|et| {
+            et.0.as_str()
+                .strip_prefix("<")
+                .and_then(|s| s.strip_suffix(">"))
+                .map(str::to_lowercase)
+                .ok_or(MalformedError::ExtensionTag(et.0.clone()))
+        })
+        .collect::<Result<_, _>>()?;
+    log::info!(
+        "extension tags: ({}) {:?}",
+        extension_tags.len(),
+        extension_tags
+    );
+
+    let protocols: collections::BTreeSet<_> =
+        query.protocols.iter().map(|p| p.0.to_lowercase()).collect();
+    log::info!("protocols: ({}) {:?}", protocols.len(), protocols);
+
+    // TODO: link trail
+
+    let magic_words: collections::BTreeSet<_> = query
+        .magicwords
+        .iter()
+        .flat_map(|mw| {
+            mw.aliases
+                .iter()
+                .map(AsRef::as_ref)
+                .chain(iter::once(mw.name.as_str()))
+        })
+        .filter_map(|s| s.strip_prefix("__").and_then(|s| s.strip_suffix("__")))
+        .map(str::to_lowercase)
+        .collect();
+    log::info!("magic words: ({}) {:?}", magic_words.len(), magic_words);
+
+    const REDIRECT_NAME: &str = "redirect";
+    let redirect_magic_words: collections::BTreeSet<_> = query
+        .magicwords
+        .iter()
+        .filter(|mw| mw.name == REDIRECT_NAME)
+        .flat_map(|mw| mw.aliases.iter())
+        .map(|s| s.strip_prefix("#").unwrap_or(s))
+        .chain(iter::once(REDIRECT_NAME))
+        .map(str::to_lowercase)
+        .collect();
+    log::info!(
+        "redirect magic words: ({}) {:?}",
+        redirect_magic_words.len(),
+        redirect_magic_words
+    );
 
     todo!()
+}
+
+fn extract_namespaces(
+    query: &Query,
+    canonical: &str,
+) -> Result<collections::BTreeSet<String>, MalformedError> {
+    let namespace = query
+        .namespaces
+        .values()
+        .find(|ns| ns.canonical.as_ref().map(AsRef::as_ref) == Some(canonical))
+        .ok_or(MalformedError::NoNamespaceCategory)?;
+    let aliases = query
+        .namespacealiases
+        .iter()
+        .filter(|na| na.id == namespace.id);
+    let names = aliases
+        .map(|na| na.alias.as_str())
+        .chain(iter::once(canonical))
+        .chain(iter::once(namespace.name.as_str()))
+        .map(str::to_lowercase);
+    Ok(names.collect())
 }
