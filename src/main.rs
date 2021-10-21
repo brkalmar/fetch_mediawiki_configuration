@@ -1,5 +1,11 @@
+use pcre::HirExt;
+use regex_syntax::hir;
 use serde::Deserialize;
-use std::{collections, env, error, fmt, process};
+use std::{collections, env, error, fmt, iter, process};
+
+mod pcre;
+
+const LINK_TRAIL_GROUP_INDEX: u32 = 1;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -74,8 +80,11 @@ struct ResponseError {
 #[derive(Debug)]
 enum MalformedError {
     ExtensionTag(String),
-    NoNamespaceCategory,
+    LinkTrailInvalidGroup(String),
+    LinkTrailNoGroup(String),
+    NoNamespace(String),
     NoQuery,
+    PCRE(pcre::Error),
 }
 
 impl fmt::Display for ResponseErrors {
@@ -111,8 +120,19 @@ impl fmt::Display for MalformedError {
         write!(f, "malformed API response: ")?;
         match self {
             ExtensionTag(tag) => write!(f, "extension tag not of the form `<...>`: {:?}", tag)?,
+            LinkTrailInvalidGroup(pattern) => write!(
+                f,
+                "structure of group {} in link trail pattern: {:?}",
+                LINK_TRAIL_GROUP_INDEX, pattern
+            )?,
+            LinkTrailNoGroup(pattern) => write!(
+                f,
+                "no group {} in link trail pattern: {:?}",
+                LINK_TRAIL_GROUP_INDEX, pattern
+            )?,
+            NoNamespace(name) => write!(f, "no namespace {:?}", name)?,
             NoQuery => write!(f, "no errors or warnings, and no query")?,
-            NoNamespaceCategory => write!(f, "no namespace `Category`")?,
+            PCRE(e) => write!(f, "{}", e)?,
         }
         Ok(())
     }
@@ -131,6 +151,8 @@ fn main() {
 }
 
 fn run() -> Result<(), Box<dyn error::Error>> {
+    use hir::HirKind;
+
     let log_var = format!("{}_LOG", clap::crate_name!().to_uppercase());
     simplelog::TermLogger::init(
         env::var(&log_var)
@@ -280,7 +302,47 @@ fn run() -> Result<(), Box<dyn error::Error>> {
         query.protocols.iter().map(|p| p.0.to_lowercase()).collect();
     log::info!("protocols: ({}) {:?}", protocols.len(), protocols);
 
-    // TODO: link trail
+    let pattern: pcre::Pattern = query
+        .general
+        .linktrail
+        .parse()
+        .map_err(MalformedError::PCRE)?;
+    log::debug!("pattern = {:?}", pattern);
+    let group = pattern
+        .hir
+        .find_group_index(LINK_TRAIL_GROUP_INDEX)
+        .ok_or_else(|| MalformedError::LinkTrailNoGroup(query.general.linktrail.to_owned()))?;
+    let repeated = match group.hir.kind() {
+        HirKind::Empty => Ok(None),
+        HirKind::Repetition(repetition) => Ok(Some(&repetition.hir)),
+        HirKind::Alternation(..)
+        | HirKind::Anchor(..)
+        | HirKind::Class(..)
+        | HirKind::Concat(..)
+        | HirKind::Group(..)
+        | HirKind::Literal(..)
+        | HirKind::WordBoundary(..) => Err(MalformedError::LinkTrailInvalidGroup(
+            query.general.linktrail.to_owned(),
+        )),
+    }?;
+    log::debug!("repeated = {:?}", repeated);
+    let characters = match repeated {
+        None => Default::default(),
+        Some(repeated) => {
+            let mut characters = Default::default();
+            extract_link_trail_characters(repeated, &mut characters).map_err(|_| {
+                MalformedError::LinkTrailInvalidGroup(query.general.linktrail.clone())
+            })?;
+            characters
+        }
+    };
+    log::debug!("characters = {:?}", characters);
+    let link_trail: String = characters.iter().collect();
+    if characters.len() <= (1 << 9) {
+        log::info!("link trail: ({}) {:?}", characters.len(), link_trail);
+    } else {
+        log::info!("link trail: ({})", characters.len());
+    }
 
     let magic_words: collections::BTreeSet<_> = query
         .magicwords
@@ -323,7 +385,7 @@ fn extract_namespaces(
         .namespaces
         .values()
         .find(|ns| ns.canonical.as_ref().map(AsRef::as_ref) == Some(canonical))
-        .ok_or(MalformedError::NoNamespaceCategory)?;
+        .ok_or_else(|| MalformedError::NoNamespace(canonical.to_owned()))?;
     let aliases = query
         .namespacealiases
         .iter()
@@ -334,4 +396,53 @@ fn extract_namespaces(
         .chain(iter::once(namespace.name.as_str()))
         .map(str::to_lowercase);
     Ok(names.collect())
+}
+
+fn extract_link_trail_characters(
+    hir: &hir::Hir,
+    characters: &mut collections::BTreeSet<char>,
+) -> Result<(), ()> {
+    use hir::{Class, HirKind, Literal};
+    match hir.kind() {
+        HirKind::Alternation(hirs) => {
+            for hir in hirs {
+                extract_link_trail_characters(hir, characters)?;
+            }
+            Ok(())
+        }
+        HirKind::Class(class) => {
+            match class {
+                Class::Bytes(bytes) => {
+                    for range in bytes.iter() {
+                        for b in range.start()..=range.end() {
+                            debug_assert!(b.is_ascii());
+                            characters.insert(b.into());
+                        }
+                    }
+                }
+                Class::Unicode(unicode) => {
+                    for range in unicode.iter() {
+                        for c in range.start()..=range.end() {
+                            characters.insert(c);
+                        }
+                    }
+                }
+            }
+            Ok(())
+        }
+        HirKind::Group(group) => extract_link_trail_characters(&group.hir, characters),
+        HirKind::Literal(literal) => {
+            let c = match literal {
+                Literal::Byte(..) => unreachable!(),
+                Literal::Unicode(c) => *c,
+            };
+            characters.insert(c);
+            Ok(())
+        }
+        HirKind::Anchor(..)
+        | HirKind::Concat(..)
+        | HirKind::Empty
+        | HirKind::Repetition(..)
+        | HirKind::WordBoundary(..) => Err(()),
+    }
 }
