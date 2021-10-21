@@ -1,7 +1,8 @@
+use io::Write;
 use pcre::HirExt;
 use regex_syntax::hir;
 use serde::Deserialize;
-use std::{collections, env, error, fmt, iter, process};
+use std::{collections, env, error, fmt, io, iter, process};
 
 mod pcre;
 
@@ -175,7 +176,8 @@ fn run() -> Result<(), Box<dyn error::Error>> {
                 "\
                 Fetch the site configuration of a MediaWiki based wiki, and output rust code for \
                 creating a configuration for `parse_wiki_text` specific to that wiki.  Write \
-                generated code to stdout.  Write log messages to stderr.\
+                generated code to stdout, as a constant expression of type \
+                `parse_wiki_text::ConfigurationSource`.  Write log messages to stderr.\
                 \n\n\
                 Maximum log level can be set in env variable `{}` to one of `off`, `error`, \
                 `warn`, `info`, `debug`, `trace`.\
@@ -374,7 +376,21 @@ fn run() -> Result<(), Box<dyn error::Error>> {
         redirect_magic_words
     );
 
-    todo!()
+    let tokens = quote::quote! {
+        ::parse_wiki_text::ConfigurationSource {
+            category_namespaces: &[ #( #category_namespaces ),* ],
+            extension_tags: &[ #( #extension_tags ),* ],
+            file_namespaces: &[ #( #file_namespaces ),* ],
+            link_trail: #link_trail ,
+            magic_words: &[ #( #magic_words ),* ],
+            protocols: &[ #( #protocols ),* ],
+            redirect_magic_words: &[ #( #redirect_magic_words ),* ],
+        }
+    };
+    let mut out = io::stdout();
+    write!(out, "{}", tokens)?;
+
+    Ok(())
 }
 
 fn extract_namespaces(

@@ -13,6 +13,9 @@ version = "~2.33.3"
 features = ["max_level_trace", "release_max_level_info"]
 version = "0.4"
 
+[dependencies.quote]
+version = "1"
+
 [dependencies.regex-syntax]
 default-features = false
 version = "0.6"
