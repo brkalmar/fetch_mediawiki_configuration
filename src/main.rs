@@ -154,20 +154,7 @@ fn main() {
 fn run() -> Result<(), Box<dyn error::Error>> {
     use hir::HirKind;
 
-    let log_var = format!("{}_LOG", clap::crate_name!().to_uppercase());
-    simplelog::TermLogger::init(
-        env::var(&log_var)
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(simplelog::LevelFilter::Info),
-        simplelog::ConfigBuilder::default()
-            .set_level_padding(simplelog::LevelPadding::Left)
-            .set_thread_level(simplelog::LevelFilter::Trace)
-            .set_thread_mode(simplelog::ThreadLogMode::Both)
-            .build(),
-        simplelog::TerminalMode::Stderr,
-        simplelog::ColorChoice::Auto,
-    )?;
+    let log_var = log_initialize()?;
 
     let matches = clap::App::new(clap::crate_name!())
         .about(clap::crate_description!())
@@ -461,4 +448,22 @@ fn extract_link_trail_characters(
         | HirKind::Repetition(..)
         | HirKind::WordBoundary(..) => Err(()),
     }
+}
+
+fn log_initialize() -> Result<String, log::SetLoggerError> {
+    let log_var = format!("{}_LOG", clap::crate_name!().to_uppercase());
+    simplelog::TermLogger::init(
+        env::var(&log_var)
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(simplelog::LevelFilter::Info),
+        simplelog::ConfigBuilder::default()
+            .set_level_padding(simplelog::LevelPadding::Left)
+            .set_thread_level(simplelog::LevelFilter::Trace)
+            .set_thread_mode(simplelog::ThreadLogMode::Both)
+            .build(),
+        simplelog::TerminalMode::Stderr,
+        simplelog::ColorChoice::Auto,
+    )?;
+    Ok(log_var)
 }
