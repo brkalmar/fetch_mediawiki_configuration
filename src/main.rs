@@ -65,6 +65,11 @@ struct Namespace {
 #[serde(transparent)]
 struct Protocol(String);
 
+#[derive(Debug)]
+struct Args {
+    domain: String,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(transparent)]
 struct ResponseErrors(Vec<ResponseError>);
@@ -86,6 +91,38 @@ enum MalformedError {
     NoNamespace(String),
     NoQuery,
     PCRE(pcre::Error),
+}
+
+impl Args {
+    fn parse(log_var: &str) -> Self {
+        let matches = clap::App::new(clap::crate_name!())
+            .about(clap::crate_description!())
+            .long_about(
+                format!(
+                    "\
+                    Fetch the site configuration of a MediaWiki based wiki, and output rust code \
+                    for creating a configuration for `parse_wiki_text` specific to that wiki.  \
+                    Write generated code to stdout, as a constant expression of type \
+                    `parse_wiki_text::ConfigurationSource`.  Write log messages to stderr.\
+                    \n\n\
+                    Maximum log level can be set in env variable `{}` to one of `off`, `error`, \
+                    `warn`, `info`, `debug`, `trace`.\
+                    ",
+                    log_var
+                )
+                .as_ref(),
+            )
+            .version(clap::crate_version!())
+            .arg(
+                clap::Arg::with_name("domain")
+                    .help("The domain name of the wiki (e.g. `en.wikipedia.org`)")
+                    .required(true),
+            )
+            .get_matches();
+
+        let domain = clap::value_t!(matches.value_of("domain"), _).unwrap_or_else(|e| e.exit());
+        Self { domain }
+    }
 }
 
 impl fmt::Display for ResponseErrors {
@@ -155,34 +192,7 @@ fn run() -> Result<(), Box<dyn error::Error>> {
     use hir::HirKind;
 
     let log_var = log_initialize()?;
-
-    let matches = clap::App::new(clap::crate_name!())
-        .about(clap::crate_description!())
-        .long_about(
-            format!(
-                "\
-                Fetch the site configuration of a MediaWiki based wiki, and output rust code for \
-                creating a configuration for `parse_wiki_text` specific to that wiki.  Write \
-                generated code to stdout, as a constant expression of type \
-                `parse_wiki_text::ConfigurationSource`.  Write log messages to stderr.\
-                \n\n\
-                Maximum log level can be set in env variable `{}` to one of `off`, `error`, \
-                `warn`, `info`, `debug`, `trace`.\
-                ",
-                log_var
-            )
-            .as_ref(),
-        )
-        .version(clap::crate_version!())
-        .arg(
-            clap::Arg::with_name("domain")
-                .help("The domain name of the wiki (e.g. `en.wikipedia.org`)")
-                .required(true),
-        )
-        .get_matches();
-
-    let domain = clap::value_t!(matches.value_of("domain"), String).unwrap_or_else(|e| e.exit());
-    log::info!("wiki domain: {:?}", domain);
+    let args = Args::parse(&log_var);
 
     let url = {
         const CATEGORIES: &[&str] = &[
@@ -205,7 +215,7 @@ fn run() -> Result<(), Box<dyn error::Error>> {
             ],
         )
         .unwrap();
-        url.set_host(Some(&domain))?;
+        url.set_host(Some(&args.domain))?;
         url
     };
     log::debug!("url = {}", url);
@@ -224,6 +234,7 @@ fn run() -> Result<(), Box<dyn error::Error>> {
         .gzip(true)
         .build()?;
 
+    log::info!("connecting to wiki domain: {:?}", args.domain);
     let response = client.get(url).send()?.error_for_status()?;
     log::info!("response status: {}", response.status());
     let log_header = |name| {
