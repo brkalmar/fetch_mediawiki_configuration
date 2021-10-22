@@ -194,64 +194,27 @@ fn run() -> Result<(), Box<dyn error::Error>> {
     let log_var = log_initialize()?;
     let args = Args::parse(&log_var);
 
-    let url = {
-        const CATEGORIES: &[&str] = &[
-            "extensiontags",
-            "general",
-            "magicwords",
-            "namespacealiases",
-            "namespaces",
-            "protocols",
-        ];
-        let mut url = reqwest::Url::parse_with_params(
-            "https://example.org/w/api.php",
-            [
-                ("action", "query"),
-                ("meta", "siteinfo"),
-                ("siprop", &CATEGORIES.join("|")),
-                ("format", "json"),
-                ("formatversion", "2"),
-                ("errorformat", "plaintext"),
-            ],
-        )
-        .unwrap();
-        url.set_host(Some(&args.domain))?;
-        url
-    };
-    log::debug!("url = {}", url);
-
-    let user_agent = format!(
-        "{}/{} ({})",
-        clap::crate_name!(),
-        clap::crate_version!(),
-        clap::crate_authors!(", ")
-    );
-    log::debug!("user_agent = {:?}", user_agent);
-    let client = reqwest::blocking::Client::builder()
-        .user_agent(user_agent)
-        .https_only(true)
-        .deflate(true)
-        .gzip(true)
-        .build()?;
-
     log::info!("connecting to wiki domain: {:?}", args.domain);
+    let client = api_client()?;
+    let url = api_url(&args.domain)?;
+    log::debug!("url = {}", url);
     let response = client.get(url).send()?.error_for_status()?;
     log::info!("response status: {}", response.status());
-    let log_header = |name| {
+
+    for name in [
+        reqwest::header::CONNECTION,
+        reqwest::header::CONTENT_ENCODING,
+        reqwest::header::CONTENT_LENGTH,
+        reqwest::header::CONTENT_TYPE,
+        reqwest::header::SERVER,
+        reqwest::header::HeaderName::from_static("mediawiki-api-error"),
+    ] {
         log::debug!(
             "response header: {:?}: {:?}",
             name,
             response.headers().get(&name)
         );
-    };
-    log_header(reqwest::header::CONNECTION);
-    log_header(reqwest::header::CONTENT_ENCODING);
-    log_header(reqwest::header::CONTENT_LENGTH);
-    log_header(reqwest::header::CONTENT_TYPE);
-    log_header(reqwest::header::SERVER);
-    log_header(reqwest::header::HeaderName::from_static(
-        "mediawiki-api-error",
-    ));
+    }
 
     let response: Response = response.json()?;
     if let Some(errors) = response.errors {
@@ -459,6 +422,47 @@ fn extract_link_trail_characters(
         | HirKind::Repetition(..)
         | HirKind::WordBoundary(..) => Err(()),
     }
+}
+
+fn api_client() -> Result<reqwest::blocking::Client, reqwest::Error> {
+    let user_agent = format!(
+        "{}/{} ({})",
+        clap::crate_name!(),
+        clap::crate_version!(),
+        clap::crate_authors!(", ")
+    );
+    log::debug!("user_agent = {:?}", user_agent);
+    reqwest::blocking::Client::builder()
+        .user_agent(user_agent)
+        .https_only(true)
+        .deflate(true)
+        .gzip(true)
+        .build()
+}
+
+fn api_url(domain: &str) -> Result<reqwest::Url, url::ParseError> {
+    const CATEGORIES: &[&str] = &[
+        "extensiontags",
+        "general",
+        "magicwords",
+        "namespacealiases",
+        "namespaces",
+        "protocols",
+    ];
+    let mut url = reqwest::Url::parse_with_params(
+        "https://example.org/w/api.php",
+        [
+            ("action", "query"),
+            ("meta", "siteinfo"),
+            ("siprop", &CATEGORIES.join("|")),
+            ("format", "json"),
+            ("formatversion", "2"),
+            ("errorformat", "plaintext"),
+        ],
+    )
+    .unwrap();
+    url.set_host(Some(domain))?;
+    Ok(url)
 }
 
 fn log_initialize() -> Result<String, log::SetLoggerError> {

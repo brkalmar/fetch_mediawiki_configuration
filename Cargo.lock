@@ -133,6 +133,7 @@ dependencies = [
  "serde",
  "serde_json",
  "simplelog",
+ "url",
 ]
 
 [[package]]

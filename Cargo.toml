@@ -34,3 +34,6 @@ version = "1"
 
 [dependencies.simplelog]
 version = "0.10"
+
+[dependencies.url]
+version = "2"
