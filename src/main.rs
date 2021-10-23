@@ -96,6 +96,29 @@ enum MalformedError {
     Response(ResponseErrors),
 }
 
+impl Query {
+    fn namespace_all_names(
+        &self,
+        canonical: &str,
+    ) -> Result<collections::BTreeSet<String>, MalformedError> {
+        let namespace = self
+            .namespaces
+            .values()
+            .find(|ns| ns.canonical.as_ref().map(AsRef::as_ref) == Some(canonical))
+            .ok_or_else(|| MalformedError::NoNamespace(canonical.to_owned()))?;
+        let aliases = self
+            .namespacealiases
+            .iter()
+            .filter(|na| na.id == namespace.id);
+        let names = aliases
+            .map(|na| na.alias.as_str())
+            .chain(iter::once(canonical))
+            .chain(iter::once(namespace.name.as_str()))
+            .map(str::to_lowercase);
+        Ok(names.collect())
+    }
+}
+
 impl convert::TryFrom<Response> for Query {
     type Error = MalformedError;
 
@@ -266,13 +289,13 @@ fn run() -> Result<(), Box<dyn error::Error>> {
         log::debug!("query {}: {}", name, value);
     }
 
-    let category_namespaces = extract_namespaces(&query, "Category")?;
+    let category_namespaces = query.namespace_all_names("Category")?;
     log::info!(
         "category namespaces: ({}) {:?}",
         category_namespaces.len(),
         category_namespaces
     );
-    let file_namespaces = extract_namespaces(&query, "File")?;
+    let file_namespaces = query.namespace_all_names("File")?;
     log::info!(
         "file namespaces: ({}) {:?}",
         file_namespaces.len(),
@@ -387,27 +410,6 @@ fn run() -> Result<(), Box<dyn error::Error>> {
     write!(out, "{}", tokens)?;
 
     Ok(())
-}
-
-fn extract_namespaces(
-    query: &Query,
-    canonical: &str,
-) -> Result<collections::BTreeSet<String>, MalformedError> {
-    let namespace = query
-        .namespaces
-        .values()
-        .find(|ns| ns.canonical.as_ref().map(AsRef::as_ref) == Some(canonical))
-        .ok_or_else(|| MalformedError::NoNamespace(canonical.to_owned()))?;
-    let aliases = query
-        .namespacealiases
-        .iter()
-        .filter(|na| na.id == namespace.id);
-    let names = aliases
-        .map(|na| na.alias.as_str())
-        .chain(iter::once(canonical))
-        .chain(iter::once(namespace.name.as_str()))
-        .map(str::to_lowercase);
-    Ok(names.collect())
 }
 
 fn extract_link_trail_characters(
