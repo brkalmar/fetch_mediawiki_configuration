@@ -213,6 +213,33 @@ impl Query {
             Anchor(..) | Concat(..) | Empty | Repetition(..) | WordBoundary(..) => Err(()),
         }
     }
+
+    fn magic_words(&self) -> collections::BTreeSet<String> {
+        self.magicwords
+            .iter()
+            .flat_map(|mw| {
+                mw.aliases
+                    .iter()
+                    .map(AsRef::as_ref)
+                    .chain(iter::once(mw.name.as_str()))
+            })
+            .filter_map(|s| s.strip_prefix("__").and_then(|s| s.strip_suffix("__")))
+            .map(str::to_lowercase)
+            .collect()
+    }
+
+    fn magic_words_redirect(&self) -> collections::BTreeSet<String> {
+        const NAME: &str = "redirect";
+        const PREFIX: &str = "#";
+        self.magicwords
+            .iter()
+            .filter(|mw| mw.name == NAME)
+            .flat_map(|mw| mw.aliases.iter())
+            .map(|s| s.strip_prefix(PREFIX).unwrap_or(s))
+            .chain(iter::once(NAME))
+            .map(str::to_lowercase)
+            .collect()
+    }
 }
 
 impl convert::TryFrom<Response> for Query {
@@ -413,30 +440,9 @@ fn run() -> Result<(), Box<dyn error::Error>> {
     }
     let link_trail: String = link_trail.into_iter().collect();
 
-    let magic_words: collections::BTreeSet<_> = query
-        .magicwords
-        .iter()
-        .flat_map(|mw| {
-            mw.aliases
-                .iter()
-                .map(AsRef::as_ref)
-                .chain(iter::once(mw.name.as_str()))
-        })
-        .filter_map(|s| s.strip_prefix("__").and_then(|s| s.strip_suffix("__")))
-        .map(str::to_lowercase)
-        .collect();
+    let magic_words = query.magic_words();
     log::info!("magic words: ({}) {:?}", magic_words.len(), magic_words);
-
-    const REDIRECT_NAME: &str = "redirect";
-    let redirect_magic_words: collections::BTreeSet<_> = query
-        .magicwords
-        .iter()
-        .filter(|mw| mw.name == REDIRECT_NAME)
-        .flat_map(|mw| mw.aliases.iter())
-        .map(|s| s.strip_prefix("#").unwrap_or(s))
-        .chain(iter::once(REDIRECT_NAME))
-        .map(str::to_lowercase)
-        .collect();
+    let redirect_magic_words = query.magic_words_redirect();
     log::info!(
         "redirect magic words: ({}) {:?}",
         redirect_magic_words.len(),
