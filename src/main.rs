@@ -1,8 +1,9 @@
+use convert::TryInto;
 use io::Write;
 use pcre::HirExt;
 use regex_syntax::hir;
 use serde::Deserialize;
-use std::{collections, env, error, fmt, io, iter, process};
+use std::{collections, convert, env, error, fmt, io, iter, process};
 
 mod pcre;
 
@@ -86,11 +87,28 @@ struct ResponseError {
 #[derive(Debug)]
 enum MalformedError {
     ExtensionTag(String),
+    Json(serde_json::Error),
     LinkTrailInvalidGroup(String),
     LinkTrailNoGroup(String),
     NoNamespace(String),
     NoQuery,
     PCRE(pcre::Error),
+    Response(ResponseErrors),
+}
+
+impl convert::TryFrom<Response> for Query {
+    type Error = MalformedError;
+
+    fn try_from(response: Response) -> Result<Self, Self::Error> {
+        if let Some(errors) = response.errors {
+            return Err(errors.into());
+        }
+        if let Some(warnings) = response.warnings {
+            return Err(warnings.into());
+        }
+        serde_json::from_str(response.query.ok_or(MalformedError::NoQuery)?.get())
+            .map_err(Into::into)
+    }
 }
 
 impl Args {
@@ -158,6 +176,7 @@ impl fmt::Display for MalformedError {
         write!(f, "malformed API response: ")?;
         match self {
             ExtensionTag(tag) => write!(f, "extension tag not of the form `<...>`: {:?}", tag)?,
+            Json(e) => write!(f, "{}", e)?,
             LinkTrailInvalidGroup(pattern) => write!(
                 f,
                 "structure of group {} in link trail pattern: {:?}",
@@ -171,12 +190,25 @@ impl fmt::Display for MalformedError {
             NoNamespace(name) => write!(f, "no namespace {:?}", name)?,
             NoQuery => write!(f, "no errors or warnings, and no query")?,
             PCRE(e) => write!(f, "{}", e)?,
+            Response(e) => write!(f, "{}", e)?,
         }
         Ok(())
     }
 }
 
 impl error::Error for MalformedError {}
+
+impl From<serde_json::Error> for MalformedError {
+    fn from(e: serde_json::Error) -> Self {
+        Self::Json(e)
+    }
+}
+
+impl From<ResponseErrors> for MalformedError {
+    fn from(e: ResponseErrors) -> Self {
+        Self::Response(e)
+    }
+}
 
 fn main() {
     process::exit(match run() {
@@ -216,20 +248,23 @@ fn run() -> Result<(), Box<dyn error::Error>> {
         );
     }
 
-    let response: Response = response.json()?;
-    if let Some(errors) = response.errors {
-        return Err(errors.into());
+    let query: Query = response.json::<Response>()?.try_into()?;
+    for (name, value) in [
+        (
+            "extensiontags",
+            format_args!("({})", query.extensiontags.len()),
+        ),
+        ("general", format_args!("{:?}", query.general)),
+        ("magicwords", format_args!("({})", query.magicwords.len())),
+        (
+            "namespacealiases",
+            format_args!("({})", query.namespacealiases.len()),
+        ),
+        ("namespaces", format_args!("({})", query.namespaces.len())),
+        ("protocols", format_args!("({})", query.protocols.len())),
+    ] {
+        log::debug!("query {}: {}", name, value);
     }
-    if let Some(warnings) = response.warnings {
-        return Err(warnings.into());
-    }
-    let query: Query = serde_json::from_str(response.query.ok_or(MalformedError::NoQuery)?.get())?;
-    log::debug!("query extensiontags: {}", query.extensiontags.len());
-    log::debug!("query general: {:?}", query.general);
-    log::debug!("query magicwords: {}", query.magicwords.len());
-    log::debug!("query namespacealiases: {}", query.namespacealiases.len());
-    log::debug!("query namespaces: {}", query.namespaces.len());
-    log::debug!("query protocols: {}", query.protocols.len());
 
     let category_namespaces = extract_namespaces(&query, "Category")?;
     log::info!(
