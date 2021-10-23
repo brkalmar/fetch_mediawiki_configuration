@@ -5,7 +5,6 @@ mod private {
     pub(crate) trait Sealed {}
 }
 
-#[derive(Debug)]
 pub(crate) struct Pattern {
     pub(crate) hir: hir::Hir,
     modifiers: Modifiers,
@@ -35,6 +34,8 @@ pub(crate) struct Modifiers {
     info_jchanged: bool,
 }
 
+pub(crate) struct HirDebugAlt<'h>(pub(crate) &'h hir::Hir);
+
 #[derive(Debug)]
 pub(crate) enum Error {
     ModifierUnsupported(char),
@@ -45,6 +46,15 @@ pub(crate) enum Error {
 
 pub(crate) trait HirExt: private::Sealed {
     fn find_group_index(&self, index: u32) -> Option<&hir::Group>;
+}
+
+impl fmt::Debug for Pattern {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Pattern")
+            .field("hir", &HirDebugAlt(&self.hir))
+            .field("modifiers", &self.modifiers)
+            .finish()
+    }
 }
 
 impl std::str::FromStr for Pattern {
@@ -149,6 +159,12 @@ impl std::str::FromStr for Modifiers {
             }
         }
         Ok(modifiers)
+    }
+}
+
+impl<'h> fmt::Debug for HirDebugAlt<'h> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Hir({})", self.0)
     }
 }
 

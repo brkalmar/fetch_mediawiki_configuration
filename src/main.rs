@@ -323,7 +323,7 @@ fn run() -> Result<(), Box<dyn error::Error>> {
             query.general.linktrail.to_owned(),
         )),
     }?;
-    log::debug!("repeated = {:?}", repeated);
+    log::debug!("repeated = {:?}", repeated.map(|r| pcre::HirDebugAlt(r)));
     let characters = match repeated {
         None => Default::default(),
         Some(repeated) => {
