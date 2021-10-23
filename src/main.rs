@@ -117,6 +117,23 @@ impl Query {
             .map(str::to_lowercase);
         Ok(names.collect())
     }
+
+    fn extension_tags(&self) -> Result<collections::BTreeSet<String>, MalformedError> {
+        self.extensiontags
+            .iter()
+            .map(|et| {
+                et.0.as_str()
+                    .strip_prefix("<")
+                    .and_then(|s| s.strip_suffix(">"))
+                    .map(str::to_lowercase)
+                    .ok_or(MalformedError::ExtensionTag(et.0.clone()))
+            })
+            .collect()
+    }
+
+    fn protocols(&self) -> collections::BTreeSet<String> {
+        self.protocols.iter().map(|p| p.0.to_lowercase()).collect()
+    }
 }
 
 impl convert::TryFrom<Response> for Query {
@@ -302,25 +319,13 @@ fn run() -> Result<(), Box<dyn error::Error>> {
         file_namespaces
     );
 
-    let extension_tags: collections::BTreeSet<_> = query
-        .extensiontags
-        .iter()
-        .map(|et| {
-            et.0.as_str()
-                .strip_prefix("<")
-                .and_then(|s| s.strip_suffix(">"))
-                .map(str::to_lowercase)
-                .ok_or(MalformedError::ExtensionTag(et.0.clone()))
-        })
-        .collect::<Result<_, _>>()?;
+    let extension_tags = query.extension_tags()?;
     log::info!(
         "extension tags: ({}) {:?}",
         extension_tags.len(),
         extension_tags
     );
-
-    let protocols: collections::BTreeSet<_> =
-        query.protocols.iter().map(|p| p.0.to_lowercase()).collect();
+    let protocols = query.protocols();
     log::info!("protocols: ({}) {:?}", protocols.len(), protocols);
 
     let pattern: pcre::Pattern = query
