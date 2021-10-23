@@ -134,6 +134,85 @@ impl Query {
     fn protocols(&self) -> collections::BTreeSet<String> {
         self.protocols.iter().map(|p| p.0.to_lowercase()).collect()
     }
+
+    fn link_trail(&self) -> Result<collections::BTreeSet<char>, MalformedError> {
+        use hir::HirKind::*;
+
+        let pattern: pcre::Pattern = self
+            .general
+            .linktrail
+            .parse()
+            .map_err(MalformedError::PCRE)?;
+        log::debug!("pattern = {:?}", pattern);
+
+        let group = pattern
+            .hir
+            .find_group_index(LINK_TRAIL_GROUP_INDEX)
+            .ok_or_else(|| MalformedError::LinkTrailNoGroup(self.general.linktrail.to_owned()))?;
+        let repeated = match group.hir.kind() {
+            Empty => Ok(None),
+            Repetition(repetition) => Ok(Some(&repetition.hir)),
+            Alternation(..) | Anchor(..) | Class(..) | Concat(..) | Group(..) | Literal(..)
+            | WordBoundary(..) => Err(MalformedError::LinkTrailInvalidGroup(
+                self.general.linktrail.to_owned(),
+            )),
+        }?;
+        log::debug!("repeated = {:?}", repeated.map(|r| pcre::HirDebugAlt(r)));
+
+        let mut characters = Default::default();
+        if let Some(repeated) = repeated {
+            Self::link_trail_characters(repeated, &mut characters).map_err(|_| {
+                MalformedError::LinkTrailInvalidGroup(self.general.linktrail.clone())
+            })?;
+        }
+        Ok(characters)
+    }
+
+    fn link_trail_characters(
+        hir: &hir::Hir,
+        characters: &mut collections::BTreeSet<char>,
+    ) -> Result<(), ()> {
+        use hir::HirKind::*;
+        use hir::{Class, Literal};
+        match hir.kind() {
+            Alternation(hirs) => {
+                for hir in hirs {
+                    Self::link_trail_characters(hir, characters)?;
+                }
+                Ok(())
+            }
+            Class(class) => {
+                match class {
+                    Class::Bytes(bytes) => {
+                        for range in bytes.iter() {
+                            for b in range.start()..=range.end() {
+                                debug_assert!(b.is_ascii());
+                                characters.insert(b.into());
+                            }
+                        }
+                    }
+                    Class::Unicode(unicode) => {
+                        for range in unicode.iter() {
+                            for c in range.start()..=range.end() {
+                                characters.insert(c);
+                            }
+                        }
+                    }
+                }
+                Ok(())
+            }
+            Group(group) => Self::link_trail_characters(&group.hir, characters),
+            Literal(literal) => {
+                let c = match literal {
+                    Literal::Byte(..) => unreachable!(),
+                    Literal::Unicode(c) => *c,
+                };
+                characters.insert(c);
+                Ok(())
+            }
+            Anchor(..) | Concat(..) | Empty | Repetition(..) | WordBoundary(..) => Err(()),
+        }
+    }
 }
 
 impl convert::TryFrom<Response> for Query {
@@ -261,8 +340,6 @@ fn main() {
 }
 
 fn run() -> Result<(), Box<dyn error::Error>> {
-    use hir::HirKind;
-
     let log_var = log_initialize()?;
     let args = Args::parse(&log_var);
 
@@ -328,47 +405,13 @@ fn run() -> Result<(), Box<dyn error::Error>> {
     let protocols = query.protocols();
     log::info!("protocols: ({}) {:?}", protocols.len(), protocols);
 
-    let pattern: pcre::Pattern = query
-        .general
-        .linktrail
-        .parse()
-        .map_err(MalformedError::PCRE)?;
-    log::debug!("pattern = {:?}", pattern);
-    let group = pattern
-        .hir
-        .find_group_index(LINK_TRAIL_GROUP_INDEX)
-        .ok_or_else(|| MalformedError::LinkTrailNoGroup(query.general.linktrail.to_owned()))?;
-    let repeated = match group.hir.kind() {
-        HirKind::Empty => Ok(None),
-        HirKind::Repetition(repetition) => Ok(Some(&repetition.hir)),
-        HirKind::Alternation(..)
-        | HirKind::Anchor(..)
-        | HirKind::Class(..)
-        | HirKind::Concat(..)
-        | HirKind::Group(..)
-        | HirKind::Literal(..)
-        | HirKind::WordBoundary(..) => Err(MalformedError::LinkTrailInvalidGroup(
-            query.general.linktrail.to_owned(),
-        )),
-    }?;
-    log::debug!("repeated = {:?}", repeated.map(|r| pcre::HirDebugAlt(r)));
-    let characters = match repeated {
-        None => Default::default(),
-        Some(repeated) => {
-            let mut characters = Default::default();
-            extract_link_trail_characters(repeated, &mut characters).map_err(|_| {
-                MalformedError::LinkTrailInvalidGroup(query.general.linktrail.clone())
-            })?;
-            characters
-        }
-    };
-    log::debug!("characters = {:?}", characters);
-    let link_trail: String = characters.iter().collect();
-    if characters.len() <= (1 << 9) {
-        log::info!("link trail: ({}) {:?}", characters.len(), link_trail);
+    let link_trail = query.link_trail()?;
+    if link_trail.len() <= (1 << 9) {
+        log::info!("link trail: ({}) {:?}", link_trail.len(), link_trail);
     } else {
-        log::info!("link trail: ({})", characters.len());
+        log::info!("link trail: ({})", link_trail.len());
     }
+    let link_trail: String = link_trail.into_iter().collect();
 
     let magic_words: collections::BTreeSet<_> = query
         .magicwords
@@ -415,55 +458,6 @@ fn run() -> Result<(), Box<dyn error::Error>> {
     write!(out, "{}", tokens)?;
 
     Ok(())
-}
-
-fn extract_link_trail_characters(
-    hir: &hir::Hir,
-    characters: &mut collections::BTreeSet<char>,
-) -> Result<(), ()> {
-    use hir::{Class, HirKind, Literal};
-    match hir.kind() {
-        HirKind::Alternation(hirs) => {
-            for hir in hirs {
-                extract_link_trail_characters(hir, characters)?;
-            }
-            Ok(())
-        }
-        HirKind::Class(class) => {
-            match class {
-                Class::Bytes(bytes) => {
-                    for range in bytes.iter() {
-                        for b in range.start()..=range.end() {
-                            debug_assert!(b.is_ascii());
-                            characters.insert(b.into());
-                        }
-                    }
-                }
-                Class::Unicode(unicode) => {
-                    for range in unicode.iter() {
-                        for c in range.start()..=range.end() {
-                            characters.insert(c);
-                        }
-                    }
-                }
-            }
-            Ok(())
-        }
-        HirKind::Group(group) => extract_link_trail_characters(&group.hir, characters),
-        HirKind::Literal(literal) => {
-            let c = match literal {
-                Literal::Byte(..) => unreachable!(),
-                Literal::Unicode(c) => *c,
-            };
-            characters.insert(c);
-            Ok(())
-        }
-        HirKind::Anchor(..)
-        | HirKind::Concat(..)
-        | HirKind::Empty
-        | HirKind::Repetition(..)
-        | HirKind::WordBoundary(..) => Err(()),
-    }
 }
 
 fn api_client() -> Result<reqwest::blocking::Client, reqwest::Error> {
