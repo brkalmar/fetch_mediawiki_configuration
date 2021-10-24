@@ -1,4 +1,5 @@
 use crate::pcre;
+use err_derive::Error;
 use itertools::Itertools;
 use pcre::HirExt;
 use regex_syntax::hir;
@@ -69,21 +70,42 @@ pub(crate) struct Response {
     warnings: Option<ResponseErrors>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub(crate) enum NewError {
-    Reqwest(reqwest::Error),
-    Url(url::ParseError),
+    #[error(display = "{}", _0)]
+    Reqwest(#[error(source)] reqwest::Error),
+    #[error(display = "{}", _0)]
+    Url(#[error(source)] url::ParseError),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub(crate) enum MalformedError {
+    #[error(
+        display = "malformed API response: extension tag not of the form `<...>`: {:?}",
+        _0
+    )]
     ExtensionTag(String),
-    Json(serde_json::Error),
+    #[error(display = "malformed API response: {}", _0)]
+    Json(#[error(source)] serde_json::Error),
+    #[error(
+        display = "malformed API response: structure of group {} in link trail pattern: {:?}",
+        LINK_TRAIL_GROUP_INDEX,
+        _0
+    )]
     LinkTrailInvalidGroup(String),
+    #[error(
+        display = "malformed API response: no group {} in link trail pattern: {:?}",
+        LINK_TRAIL_GROUP_INDEX,
+        _0
+    )]
     LinkTrailNoGroup(String),
+    #[error(display = "malformed API response: no namespace {:?}", _0)]
     NoNamespace(String),
+    #[error(display = "malformed API response: no errors or warnings, and no query")]
     NoQuery,
-    PCRE(pcre::Error),
+    #[error(display = "malformed API response: {}", _0)]
+    PCRE(#[error(source)] pcre::Error),
+    #[error(display = "malformed API response: {}", _0)]
     Response(ResponseErrors),
 }
 
@@ -91,8 +113,9 @@ pub(crate) enum MalformedError {
 #[serde(transparent)]
 pub(crate) struct ResponseErrors(Vec<ResponseError>);
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Error)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
+#[error(display = "API error: [{}] {} {} ({:?})", module, code, text, data)]
 struct ResponseError {
     code: String,
     data: Option<serde_json::Value>,
@@ -340,65 +363,6 @@ impl convert::TryFrom<Response> for Query {
     }
 }
 
-impl fmt::Display for NewError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use NewError::*;
-        match self {
-            Reqwest(e) => write!(f, "{}", e),
-            Url(e) => write!(f, "{}", e),
-        }
-    }
-}
-
-impl error::Error for NewError {}
-
-impl From<reqwest::Error> for NewError {
-    fn from(e: reqwest::Error) -> Self {
-        Self::Reqwest(e)
-    }
-}
-
-impl From<url::ParseError> for NewError {
-    fn from(e: url::ParseError) -> Self {
-        Self::Url(e)
-    }
-}
-
-impl fmt::Display for MalformedError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use MalformedError::*;
-
-        write!(f, "malformed API response: ")?;
-        match self {
-            ExtensionTag(tag) => write!(f, "extension tag not of the form `<...>`: {:?}", tag)?,
-            Json(e) => write!(f, "{}", e)?,
-            LinkTrailInvalidGroup(pattern) => write!(
-                f,
-                "structure of group {} in link trail pattern: {:?}",
-                LINK_TRAIL_GROUP_INDEX, pattern
-            )?,
-            LinkTrailNoGroup(pattern) => write!(
-                f,
-                "no group {} in link trail pattern: {:?}",
-                LINK_TRAIL_GROUP_INDEX, pattern
-            )?,
-            NoNamespace(name) => write!(f, "no namespace {:?}", name)?,
-            NoQuery => write!(f, "no errors or warnings, and no query")?,
-            PCRE(e) => write!(f, "{}", e)?,
-            Response(e) => write!(f, "{}", e)?,
-        }
-        Ok(())
-    }
-}
-
-impl error::Error for MalformedError {}
-
-impl From<serde_json::Error> for MalformedError {
-    fn from(e: serde_json::Error) -> Self {
-        Self::Json(e)
-    }
-}
-
 impl From<ResponseErrors> for MalformedError {
     fn from(e: ResponseErrors) -> Self {
         Self::Response(e)
@@ -412,17 +376,3 @@ impl fmt::Display for ResponseErrors {
 }
 
 impl error::Error for ResponseErrors {}
-
-impl fmt::Display for ResponseError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "API error: [{}] {} {}",
-            self.module, self.code, self.text
-        )?;
-        if let Some(ref data) = self.data {
-            write!(f, " ({:?})", data)?;
-        }
-        Ok(())
-    }
-}

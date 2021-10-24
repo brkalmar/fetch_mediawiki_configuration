@@ -1,5 +1,6 @@
+use err_derive::Error;
 use regex_syntax::{ast, hir};
-use std::{error, fmt};
+use std::fmt;
 
 mod private {
     pub(crate) trait Sealed {}
@@ -36,11 +37,15 @@ pub(crate) struct Modifiers {
 
 pub(crate) struct HirDebugAlt<'h>(pub(crate) &'h hir::Hir);
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub(crate) enum Error {
+    #[error(display = "unsupported PHP PCRE modifier: {:?}", _0)]
     ModifierUnsupported(char),
+    #[error(display = "unrecognized PHP PCRE modifier: {:?}", _0)]
     Modifiers(char),
+    #[error(display = "invalid PHP PCRE pattern: {:?}", _0)]
     Pattern(String),
+    #[error(display = "invalid PHP PCRE regex: {}", _0)]
     Regex(regex_syntax::Error),
 }
 
@@ -167,23 +172,6 @@ impl<'h> fmt::Debug for HirDebugAlt<'h> {
         write!(f, "Hir({})", self.0)
     }
 }
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use Error::*;
-
-        write!(f, "PHP PCRE ")?;
-        match self {
-            ModifierUnsupported(c) => write!(f, "unsupported modifier: {:?}", c)?,
-            Modifiers(c) => write!(f, "unrecognized modifier: {:?}", c)?,
-            Pattern(pattern) => write!(f, "invalid pattern: {:?}", pattern)?,
-            Regex(e) => write!(f, "invalid regex: {}", e)?,
-        }
-        Ok(())
-    }
-}
-
-impl error::Error for Error {}
 
 impl HirExt for hir::Hir {
     fn find_group_index(&self, index: u32) -> Option<&hir::Group> {
