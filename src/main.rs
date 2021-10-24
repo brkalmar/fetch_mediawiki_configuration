@@ -2,6 +2,7 @@ use convert::TryInto;
 use io::Write;
 use std::{convert, env, error, io, process};
 
+mod extract;
 mod pcre;
 mod siteinfo;
 
@@ -77,29 +78,29 @@ fn run() -> Result<(), Box<dyn error::Error>> {
         log::debug!("query {}: {}", name, value);
     }
 
-    let category_namespaces = query.namespace_all_names("Category")?;
+    let category_namespaces = extract::namespaces(&query, "Category")?;
     log::info!(
         "category namespaces: ({}) {:?}",
         category_namespaces.len(),
         category_namespaces
     );
-    let file_namespaces = query.namespace_all_names("File")?;
+    let file_namespaces = extract::namespaces(&query, "File")?;
     log::info!(
         "file namespaces: ({}) {:?}",
         file_namespaces.len(),
         file_namespaces
     );
 
-    let extension_tags = query.extension_tags()?;
+    let extension_tags = extract::extension_tags(&query)?;
     log::info!(
         "extension tags: ({}) {:?}",
         extension_tags.len(),
         extension_tags
     );
-    let protocols = query.protocols();
+    let protocols = extract::protocols(&query);
     log::info!("protocols: ({}) {:?}", protocols.len(), protocols);
 
-    let link_trail = query.link_trail()?;
+    let link_trail = extract::link_trail(&query)?;
     if link_trail.len() <= (1 << 9) {
         log::info!("link trail: ({}) {:?}", link_trail.len(), link_trail);
     } else {
@@ -107,9 +108,9 @@ fn run() -> Result<(), Box<dyn error::Error>> {
     }
     let link_trail: String = link_trail.into_iter().collect();
 
-    let magic_words = query.magic_words();
+    let magic_words = extract::magic_words(&query);
     log::info!("magic words: ({}) {:?}", magic_words.len(), magic_words);
-    let redirect_magic_words = query.magic_words_redirect();
+    let redirect_magic_words = extract::magic_words_redirect(&query);
     log::info!(
         "redirect magic words: ({}) {:?}",
         redirect_magic_words.len(),
