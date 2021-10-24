@@ -1,5 +1,6 @@
 use convert::TryInto;
 use io::Write;
+use itertools::Itertools;
 use pcre::HirExt;
 use regex_syntax::hir;
 use serde::Deserialize;
@@ -291,11 +292,7 @@ impl Args {
 
 impl fmt::Display for ResponseErrors {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for e in &self.0[..(self.0.len() - 1)] {
-            write!(f, "{}; ", e)?;
-        }
-        write!(f, "{}", self.0.last().unwrap())?;
-        Ok(())
+        write!(f, "{}", self.0.iter().format("; "))
     }
 }
 
@@ -482,7 +479,7 @@ fn api_client() -> Result<reqwest::blocking::Client, reqwest::Error> {
         .build()
 }
 
-fn api_url(domain: &str) -> Result<reqwest::Url, url::ParseError> {
+fn api_url(domain: &str) -> Result<url::Url, url::ParseError> {
     const CATEGORIES: &[&str] = &[
         "extensiontags",
         "general",
@@ -491,12 +488,12 @@ fn api_url(domain: &str) -> Result<reqwest::Url, url::ParseError> {
         "namespaces",
         "protocols",
     ];
-    let mut url = reqwest::Url::parse_with_params(
+    let mut url = url::Url::parse_with_params(
         "https://example.org/w/api.php",
         [
             ("action", "query"),
             ("meta", "siteinfo"),
-            ("siprop", &CATEGORIES.join("|")),
+            ("siprop", &CATEGORIES.iter().format("|").to_string()),
             ("format", "json"),
             ("formatversion", "2"),
             ("errorformat", "plaintext"),
