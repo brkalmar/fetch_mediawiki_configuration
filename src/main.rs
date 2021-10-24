@@ -58,7 +58,7 @@ fn run() -> Result<(), Box<dyn error::Error>> {
 
     log::info!("connecting to wiki domain: {:?}", args.domain);
     let endpoint = siteinfo::Endpoint::new(&args.domain)?;
-    let query: siteinfo::Query = endpoint.fetch()?.try_into()?;
+    let query: siteinfo::response::Query = endpoint.fetch()?.try_into()?;
 
     for (name, value) in [
         (

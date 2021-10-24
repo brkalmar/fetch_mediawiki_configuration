@@ -3,71 +3,15 @@ use err_derive::Error;
 use itertools::Itertools;
 use pcre::HirExt;
 use regex_syntax::hir;
-use serde::Deserialize;
-use std::{collections, convert, env, error, fmt, iter};
+use std::{collections, convert, env, iter};
+
+pub(crate) mod response;
 
 const LINK_TRAIL_GROUP_INDEX: u32 = 1;
 
 pub(crate) struct Endpoint {
     client: reqwest::blocking::Client,
     url: url::Url,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub(crate) struct Query {
-    pub(crate) extensiontags: Vec<ExtensionTag>,
-    pub(crate) general: General,
-    pub(crate) magicwords: Vec<MagicWord>,
-    pub(crate) namespacealiases: Vec<NamespaceAlias>,
-    pub(crate) namespaces: collections::BTreeMap<String, Namespace>,
-    pub(crate) protocols: Vec<Protocol>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(transparent)]
-pub(crate) struct ExtensionTag(String);
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub(crate) struct General {
-    linktrail: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub(crate) struct MagicWord {
-    aliases: Vec<String>,
-    case_sensitive: Option<bool>,
-    name: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub(crate) struct NamespaceAlias {
-    id: i64,
-    alias: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub(crate) struct Namespace {
-    id: i64,
-    name: String,
-    canonical: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(transparent)]
-pub(crate) struct Protocol(String);
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub(crate) struct Response {
-    query: Option<Box<serde_json::value::RawValue>>,
-
-    errors: Option<ResponseErrors>,
-    warnings: Option<ResponseErrors>,
 }
 
 #[derive(Debug, Error)]
@@ -106,25 +50,11 @@ pub(crate) enum MalformedError {
     #[error(display = "malformed API response: {}", _0)]
     PCRE(#[error(source)] pcre::Error),
     #[error(display = "malformed API response: {}", _0)]
-    Response(ResponseErrors),
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(transparent)]
-pub(crate) struct ResponseErrors(Vec<ResponseError>);
-
-#[derive(Debug, Deserialize, Error)]
-#[serde(deny_unknown_fields, rename_all = "kebab-case")]
-#[error(display = "API error: [{}] {} {} ({:?})", module, code, text, data)]
-struct ResponseError {
-    code: String,
-    data: Option<serde_json::Value>,
-    module: String,
-    text: String,
+    Response(#[error(source)] response::Errors),
 }
 
 impl Endpoint {
-    pub(crate) fn fetch(&self) -> Result<Response, reqwest::Error> {
+    pub(crate) fn fetch(&self) -> Result<response::Response, reqwest::Error> {
         let response = self.fetch_response()?;
         log::info!("response status: {}", response.status());
 
@@ -143,7 +73,7 @@ impl Endpoint {
             );
         }
 
-        response.json::<Response>()
+        response.json()
     }
 
     fn fetch_response(&self) -> Result<reqwest::blocking::Response, reqwest::Error> {
@@ -202,7 +132,7 @@ impl Endpoint {
     }
 }
 
-impl Query {
+impl response::Query {
     pub(crate) fn namespace_all_names(
         &self,
         canonical: &str,
@@ -348,10 +278,10 @@ impl Query {
     }
 }
 
-impl convert::TryFrom<Response> for Query {
+impl convert::TryFrom<response::Response> for response::Query {
     type Error = MalformedError;
 
-    fn try_from(response: Response) -> Result<Self, Self::Error> {
+    fn try_from(response: response::Response) -> Result<Self, Self::Error> {
         if let Some(errors) = response.errors {
             return Err(errors.into());
         }
@@ -362,17 +292,3 @@ impl convert::TryFrom<Response> for Query {
             .map_err(Into::into)
     }
 }
-
-impl From<ResponseErrors> for MalformedError {
-    fn from(e: ResponseErrors) -> Self {
-        Self::Response(e)
-    }
-}
-
-impl fmt::Display for ResponseErrors {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0.iter().format("; "))
-    }
-}
-
-impl error::Error for ResponseErrors {}
