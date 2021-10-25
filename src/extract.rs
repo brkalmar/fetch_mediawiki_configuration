@@ -1,17 +1,44 @@
 use crate::{pcre, siteinfo};
+use err_derive::Error;
 use pcre::HirExt;
 use regex_syntax::hir;
 use std::{collections, iter};
 
+#[derive(Debug, Error)]
+#[error(display = "namespace not found: {:?}", _0)]
+pub(crate) struct NamespaceNotFoundError(String);
+
+#[derive(Debug, Error)]
+#[error(display = "malformed extension tag: {:?}", _0)]
+pub(crate) struct MalformedExtensionTagError(String);
+
+#[derive(Debug, Error)]
+pub(crate) enum LinkTrailError {
+    #[error(display = "{}", _0)]
+    PCRE(#[error(source)] pcre::PatternParseError),
+    #[error(
+        display = "group {} not found in link trail pattern: {:?}",
+        index,
+        pattern
+    )]
+    GroupNotFound { pattern: String, index: u32 },
+    #[error(
+        display = "group {} of invalid structure in link trail pattern: {:?}",
+        index,
+        pattern
+    )]
+    GroupInvalid { pattern: String, index: u32 },
+}
+
 pub(crate) fn namespaces(
     query: &siteinfo::response::Query,
     canonical: &str,
-) -> Result<collections::BTreeSet<String>, siteinfo::MalformedError> {
+) -> Result<collections::BTreeSet<String>, NamespaceNotFoundError> {
     let namespace = query
         .namespaces
         .values()
         .find(|ns| ns.canonical.as_ref().map(AsRef::as_ref) == Some(canonical))
-        .ok_or_else(|| siteinfo::MalformedError::NoNamespace(canonical.to_owned()))?;
+        .ok_or_else(|| NamespaceNotFoundError(canonical.to_owned()))?;
     let aliases = query
         .namespacealiases
         .iter()
@@ -26,7 +53,7 @@ pub(crate) fn namespaces(
 
 pub(crate) fn extension_tags(
     query: &siteinfo::response::Query,
-) -> Result<collections::BTreeSet<String>, siteinfo::MalformedError> {
+) -> Result<collections::BTreeSet<String>, MalformedExtensionTagError> {
     query
         .extensiontags
         .iter()
@@ -35,7 +62,7 @@ pub(crate) fn extension_tags(
                 .strip_prefix("<")
                 .and_then(|s| s.strip_suffix(">"))
                 .map(str::to_lowercase)
-                .ok_or(siteinfo::MalformedError::ExtensionTag(et.0.clone()))
+                .ok_or(MalformedExtensionTagError(et.0.clone()))
         })
         .collect()
 }
@@ -46,31 +73,41 @@ pub(crate) fn protocols(query: &siteinfo::response::Query) -> collections::BTree
 
 pub(crate) fn link_trail(
     query: &siteinfo::response::Query,
-) -> Result<collections::BTreeSet<char>, siteinfo::MalformedError> {
+) -> Result<collections::BTreeSet<char>, LinkTrailError> {
     use hir::HirKind::*;
 
     let original = &query.general.linktrail;
-    let pattern: pcre::Pattern = original.parse().map_err(siteinfo::MalformedError::PCRE)?;
+    let pattern: pcre::Pattern = original.parse().map_err(LinkTrailError::PCRE)?;
     log::debug!("pattern = {:?}", pattern);
 
-    let group = pattern
-        .hir
-        .find_group_index(siteinfo::LINK_TRAIL_GROUP_INDEX)
-        .ok_or_else(|| siteinfo::MalformedError::LinkTrailNoGroup(original.clone()))?;
+    const GROUP_INDEX: u32 = 1;
+    let group =
+        pattern
+            .hir
+            .find_group_index(GROUP_INDEX)
+            .ok_or_else(|| LinkTrailError::GroupNotFound {
+                pattern: original.clone(),
+                index: GROUP_INDEX,
+            })?;
     let repeated = match group.hir.kind() {
         Empty => Ok(None),
         Repetition(repetition) => Ok(Some(&repetition.hir)),
         Alternation(..) | Anchor(..) | Class(..) | Concat(..) | Group(..) | Literal(..)
-        | WordBoundary(..) => Err(siteinfo::MalformedError::LinkTrailInvalidGroup(
-            original.clone(),
-        )),
+        | WordBoundary(..) => Err(LinkTrailError::GroupInvalid {
+            pattern: original.clone(),
+            index: GROUP_INDEX,
+        }),
     }?;
     log::debug!("repeated = {:?}", repeated.map(|r| pcre::HirDebugAlt(r)));
 
     let mut characters = Default::default();
     if let Some(repeated) = repeated {
-        link_trail_characters(repeated, &mut characters)
-            .map_err(|_| siteinfo::MalformedError::LinkTrailInvalidGroup(original.clone()))?;
+        link_trail_characters(repeated, &mut characters).map_err(|_| {
+            LinkTrailError::GroupInvalid {
+                pattern: original.clone(),
+                index: GROUP_INDEX,
+            }
+        })?;
     }
     Ok(characters)
 }

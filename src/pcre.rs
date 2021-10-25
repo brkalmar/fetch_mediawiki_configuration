@@ -38,16 +38,20 @@ pub(crate) struct Modifiers {
 pub(crate) struct HirDebugAlt<'h>(pub(crate) &'h hir::Hir);
 
 #[derive(Debug, Error)]
-pub(crate) enum Error {
+pub(crate) enum PatternParseError {
     #[error(display = "unsupported PHP PCRE modifier: {:?}", _0)]
     ModifierUnsupported(char),
-    #[error(display = "unrecognized PHP PCRE modifier: {:?}", _0)]
-    Modifiers(char),
+    #[error(display = "{}", _0)]
+    Modifiers(#[error(source)] ModifiersParseError),
     #[error(display = "invalid PHP PCRE pattern: {:?}", _0)]
     Pattern(String),
     #[error(display = "invalid PHP PCRE regex: {}", _0)]
     Regex(regex_syntax::Error),
 }
+
+#[derive(Debug, Error)]
+#[error(display = "unrecognized PHP PCRE modifier: {:?}", _0)]
+pub(crate) struct ModifiersParseError(char);
 
 pub(crate) trait HirExt: private::Sealed {
     fn find_group_index(&self, index: u32) -> Option<&hir::Group>;
@@ -63,7 +67,7 @@ impl fmt::Debug for Pattern {
 }
 
 impl std::str::FromStr for Pattern {
-    type Err = Error;
+    type Err = PatternParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut delimiter = None;
@@ -93,7 +97,7 @@ impl std::str::FromStr for Pattern {
                 (end, index + 1)
             }
             None => {
-                return Err(Error::Pattern(s.to_owned()));
+                return Err(PatternParseError::Pattern(s.to_owned()));
             }
         };
 
@@ -104,7 +108,9 @@ impl std::str::FromStr for Pattern {
         // character boundaries are properly aligned.  (Also checked in the debug assertion.)
         debug_assert!(std::str::from_utf8(modifiers).is_ok());
         let modifiers = unsafe { std::str::from_utf8_unchecked(modifiers) };
-        let regex = rsplit.next().ok_or_else(|| Error::Pattern(s.to_owned()))?;
+        let regex = rsplit
+            .next()
+            .ok_or_else(|| PatternParseError::Pattern(s.to_owned()))?;
 
         // UNSAFE: See above.
         debug_assert!(std::str::from_utf8(regex).is_ok());
@@ -114,7 +120,7 @@ impl std::str::FromStr for Pattern {
 
         let modifiers: Modifiers = modifiers.parse()?;
         if modifiers.info_jchanged {
-            return Err(Error::ModifierUnsupported('J'));
+            return Err(PatternParseError::ModifierUnsupported('J'));
         }
 
         let mut parser = ast::parse::ParserBuilder::default()
@@ -123,7 +129,7 @@ impl std::str::FromStr for Pattern {
         let ast = parser
             .parse(regex)
             .map_err(Into::into)
-            .map_err(Error::Regex)?;
+            .map_err(PatternParseError::Regex)?;
         let mut translator = hir::translate::TranslatorBuilder::default()
             .case_insensitive(modifiers.caseless)
             .dot_matches_new_line(modifiers.dotall)
@@ -133,14 +139,14 @@ impl std::str::FromStr for Pattern {
         let hir = translator
             .translate(regex, &ast)
             .map_err(Into::into)
-            .map_err(Error::Regex)?;
+            .map_err(PatternParseError::Regex)?;
 
         Ok(Self { hir, modifiers })
     }
 }
 
 impl std::str::FromStr for Modifiers {
-    type Err = Error;
+    type Err = ModifiersParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut modifiers = Self::default();
@@ -160,7 +166,7 @@ impl std::str::FromStr for Modifiers {
                 b'X' => modifiers.extra = true,
                 b'J' => modifiers.info_jchanged = true,
                 b'u' => modifiers.utf8 = true,
-                _ => return Err(Error::Modifiers(s[i..].chars().next().unwrap())),
+                _ => return Err(ModifiersParseError(s[i..].chars().next().unwrap())),
             }
         }
         Ok(modifiers)

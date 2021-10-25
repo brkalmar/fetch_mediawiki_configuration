@@ -1,6 +1,7 @@
 use convert::TryInto;
+use err_derive::Error;
 use io::Write;
-use std::{convert, env, error, io, process};
+use std::{convert, env, io, process};
 
 mod extract;
 mod pcre;
@@ -11,8 +12,32 @@ struct Args {
     domain: String,
 }
 
+#[derive(Debug, Error)]
+enum Error {
+    #[error(display = "{}", _0)]
+    Clap(#[error(no_from, source)] clap::Error),
+    #[error(display = "{}", _0)]
+    ClapDisplayed(#[error(no_from, source)] clap::Error),
+    #[error(display = "{}", _0)]
+    Io(#[error(source)] io::Error),
+    #[error(display = "{}", _0)]
+    LinkTrail(#[error(source)] extract::LinkTrailError),
+    #[error(display = "{}", _0)]
+    Log(#[error(source)] log::SetLoggerError),
+    #[error(display = "{}", _0)]
+    MalformedExtensionTag(#[error(source)] extract::MalformedExtensionTagError),
+    #[error(display = "{}", _0)]
+    NamespaceNotFound(#[error(source)] extract::NamespaceNotFoundError),
+    #[error(display = "{}", _0)]
+    QueryFromResponse(#[error(source)] siteinfo::QueryFromResponseError),
+    #[error(display = "{}", _0)]
+    Reqwest(#[error(source)] reqwest::Error),
+    #[error(display = "{}", _0)]
+    SiteinfoNew(#[error(source)] siteinfo::NewError),
+}
+
 impl Args {
-    fn parse(log_var: &str) -> Self {
+    fn parse(log_var: &str) -> Result<Self, clap::Error> {
         let matches = clap::App::new(clap::crate_name!())
             .about(clap::crate_description!())
             .long_about(
@@ -36,16 +61,34 @@ impl Args {
                     .help("The domain name of the wiki (e.g. `en.wikipedia.org`)")
                     .required(true),
             )
-            .get_matches();
+            .get_matches_safe()?;
 
-        let domain = clap::value_t!(matches.value_of("domain"), _).unwrap_or_else(|e| e.exit());
-        Self { domain }
+        let domain = clap::value_t!(matches.value_of("domain"), _)?;
+        Ok(Self { domain })
+    }
+}
+
+impl From<clap::Error> for Error {
+    fn from(e: clap::Error) -> Self {
+        use clap::ErrorKind::*;
+        match e.kind {
+            HelpDisplayed | VersionDisplayed => Self::ClapDisplayed(e),
+            _ => Self::Clap(e.into()),
+        }
     }
 }
 
 fn main() {
     process::exit(match run() {
         Ok(()) => 0,
+        Err(Error::ClapDisplayed(e)) => {
+            print!("{}", e);
+            0
+        }
+        Err(Error::Clap(e)) => {
+            eprint!("{}", e);
+            1
+        }
         Err(e) => {
             log::error!("{}", e);
             1
@@ -53,9 +96,9 @@ fn main() {
     });
 }
 
-fn run() -> Result<(), Box<dyn error::Error>> {
+fn run() -> Result<(), Error> {
     let log_var = log_initialize()?;
-    let args = Args::parse(&log_var);
+    let args = Args::parse(&log_var)?;
 
     log::info!("connecting to wiki domain: {:?}", args.domain);
     let endpoint = siteinfo::Endpoint::new(&args.domain)?;

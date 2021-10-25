@@ -1,11 +1,8 @@
-use crate::pcre;
 use err_derive::Error;
 use itertools::Itertools;
 use std::{convert, env};
 
 pub(crate) mod response;
-
-pub(crate) const LINK_TRAIL_GROUP_INDEX: u32 = 1;
 
 pub(crate) struct Endpoint {
     client: reqwest::blocking::Client,
@@ -21,33 +18,12 @@ pub(crate) enum NewError {
 }
 
 #[derive(Debug, Error)]
-pub(crate) enum MalformedError {
-    #[error(
-        display = "malformed API response: extension tag not of the form `<...>`: {:?}",
-        _0
-    )]
-    ExtensionTag(String),
-    #[error(display = "malformed API response: {}", _0)]
+pub(crate) enum QueryFromResponseError {
+    #[error(display = "{}", _0)]
     Json(#[error(source)] serde_json::Error),
-    #[error(
-        display = "malformed API response: structure of group {} in link trail pattern: {:?}",
-        LINK_TRAIL_GROUP_INDEX,
-        _0
-    )]
-    LinkTrailInvalidGroup(String),
-    #[error(
-        display = "malformed API response: no group {} in link trail pattern: {:?}",
-        LINK_TRAIL_GROUP_INDEX,
-        _0
-    )]
-    LinkTrailNoGroup(String),
-    #[error(display = "malformed API response: no namespace {:?}", _0)]
-    NoNamespace(String),
-    #[error(display = "malformed API response: no errors or warnings, and no query")]
-    NoQuery,
-    #[error(display = "malformed API response: {}", _0)]
-    PCRE(#[error(source)] pcre::Error),
-    #[error(display = "malformed API response: {}", _0)]
+    #[error(display = "no errors or warnings, and no query found")]
+    QueryNotFound,
+    #[error(display = "{}", _0)]
     Response(#[error(source)] response::Errors),
 }
 
@@ -131,7 +107,7 @@ impl Endpoint {
 }
 
 impl convert::TryFrom<response::Response> for response::Query {
-    type Error = MalformedError;
+    type Error = QueryFromResponseError;
 
     fn try_from(response: response::Response) -> Result<Self, Self::Error> {
         if let Some(errors) = response.errors {
@@ -140,7 +116,12 @@ impl convert::TryFrom<response::Response> for response::Query {
         if let Some(warnings) = response.warnings {
             return Err(warnings.into());
         }
-        serde_json::from_str(response.query.ok_or(MalformedError::NoQuery)?.get())
-            .map_err(Into::into)
+        serde_json::from_str(
+            response
+                .query
+                .ok_or(QueryFromResponseError::QueryNotFound)?
+                .get(),
+        )
+        .map_err(Into::into)
     }
 }
