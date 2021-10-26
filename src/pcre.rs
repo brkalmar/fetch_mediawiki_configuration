@@ -12,7 +12,7 @@ pub(crate) struct Pattern {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct Modifiers {
+struct Modifiers {
     // Passed to parser.
     extended: bool,
 
@@ -38,20 +38,23 @@ pub(crate) struct Modifiers {
 pub(crate) struct HirDebugAlt<'h>(pub(crate) &'h hir::Hir);
 
 #[derive(Debug, Error)]
-pub(crate) enum PatternParseError {
-    #[error(display = "unsupported PHP PCRE modifier: {:?}", _0)]
+#[error(display = "{}: {:?}", kind, pattern)]
+pub(crate) struct PatternParseError {
+    pub(crate) pattern: String,
+    pub(crate) kind: PatternParseErrorKind,
+}
+
+#[derive(Debug)]
+pub(crate) enum PatternParseErrorKind {
     ModifierUnsupported(char),
-    #[error(display = "{}", _0)]
-    Modifiers(#[error(source)] ModifiersParseError),
-    #[error(display = "invalid PHP PCRE pattern: {:?}", _0)]
-    Pattern(String),
-    #[error(display = "invalid PHP PCRE regex: {}", _0)]
+    Modifiers(ModifiersParseError),
+    Pattern,
     Regex(regex_syntax::Error),
 }
 
 #[derive(Debug, Error)]
 #[error(display = "unrecognized PHP PCRE modifier: {:?}", _0)]
-pub(crate) struct ModifiersParseError(char);
+pub(crate) struct ModifiersParseError(pub(crate) char);
 
 pub(crate) trait HirExt: private::Sealed {
     fn find_group_index(&self, index: u32) -> Option<&hir::Group>;
@@ -97,7 +100,7 @@ impl std::str::FromStr for Pattern {
                 (end, index + 1)
             }
             None => {
-                return Err(PatternParseError::Pattern(s.to_owned()));
+                return Err(PatternParseError::pattern(s));
             }
         };
 
@@ -108,9 +111,7 @@ impl std::str::FromStr for Pattern {
         // character boundaries are properly aligned.  (Also checked in the debug assertion.)
         debug_assert!(std::str::from_utf8(modifiers).is_ok());
         let modifiers = unsafe { std::str::from_utf8_unchecked(modifiers) };
-        let regex = rsplit
-            .next()
-            .ok_or_else(|| PatternParseError::Pattern(s.to_owned()))?;
+        let regex = rsplit.next().ok_or_else(|| PatternParseError::pattern(s))?;
 
         // UNSAFE: See above.
         debug_assert!(std::str::from_utf8(regex).is_ok());
@@ -118,9 +119,11 @@ impl std::str::FromStr for Pattern {
 
         debug_assert!(rsplit.next().is_none());
 
-        let modifiers: Modifiers = modifiers.parse()?;
+        let modifiers: Modifiers = modifiers
+            .parse()
+            .map_err(|e| PatternParseError::modifiers(s, e))?;
         if modifiers.info_jchanged {
-            return Err(PatternParseError::ModifierUnsupported('J'));
+            return Err(PatternParseError::modifier_unsupported(s, 'J'));
         }
 
         let mut parser = ast::parse::ParserBuilder::default()
@@ -128,8 +131,7 @@ impl std::str::FromStr for Pattern {
             .build();
         let ast = parser
             .parse(regex)
-            .map_err(Into::into)
-            .map_err(PatternParseError::Regex)?;
+            .map_err(|e| PatternParseError::regex(s, e.into()))?;
         let mut translator = hir::translate::TranslatorBuilder::default()
             .case_insensitive(modifiers.caseless)
             .dot_matches_new_line(modifiers.dotall)
@@ -138,8 +140,7 @@ impl std::str::FromStr for Pattern {
             .build();
         let hir = translator
             .translate(regex, &ast)
-            .map_err(Into::into)
-            .map_err(PatternParseError::Regex)?;
+            .map_err(|e| PatternParseError::regex(s, e.into()))?;
 
         Ok(Self { hir, modifiers })
     }
@@ -205,3 +206,45 @@ impl HirExt for hir::Hir {
 }
 
 impl private::Sealed for hir::Hir {}
+
+impl PatternParseError {
+    fn modifier_unsupported(pattern: &str, c: char) -> Self {
+        Self {
+            pattern: pattern.to_owned(),
+            kind: PatternParseErrorKind::ModifierUnsupported(c),
+        }
+    }
+
+    fn modifiers(pattern: &str, e: ModifiersParseError) -> Self {
+        Self {
+            pattern: pattern.to_owned(),
+            kind: PatternParseErrorKind::Modifiers(e),
+        }
+    }
+
+    fn pattern(pattern: &str) -> Self {
+        Self {
+            pattern: pattern.to_owned(),
+            kind: PatternParseErrorKind::Pattern,
+        }
+    }
+
+    fn regex(pattern: &str, e: regex_syntax::Error) -> Self {
+        Self {
+            pattern: pattern.to_owned(),
+            kind: PatternParseErrorKind::Regex(e),
+        }
+    }
+}
+
+impl fmt::Display for PatternParseErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use PatternParseErrorKind::*;
+        match self {
+            ModifierUnsupported(c) => write!(f, "unsupported PHP PCRE modifier: {:?}", c),
+            Modifiers(e) => write!(f, "{}", e),
+            Pattern => write!(f, "invalid PHP PCRE pattern"),
+            Regex(e) => write!(f, "invalid PHP PCRE regex: {}", e),
+        }
+    }
+}

@@ -18,22 +18,32 @@ enum Error {
     Clap(#[error(no_from, source)] clap::Error),
     #[error(display = "{}", _0)]
     ClapDisplayed(#[error(no_from, source)] clap::Error),
-    #[error(display = "{}", _0)]
+    #[error(display = "I/O error: {}", _0)]
     Io(#[error(source)] io::Error),
+    #[error(display = "cannot extract configuration data: {}", _0)]
+    Extract(#[error(source)] ExtractError),
+    #[error(display = "siteinfo endpoint: {}", _0)]
+    Siteinfo(#[error(source)] SiteinfoError),
+}
+
+#[derive(Debug, Error)]
+enum ExtractError {
     #[error(display = "{}", _0)]
     LinkTrail(#[error(source)] extract::LinkTrailError),
-    #[error(display = "{}", _0)]
-    Log(#[error(source)] log::SetLoggerError),
     #[error(display = "{}", _0)]
     MalformedExtensionTag(#[error(source)] extract::MalformedExtensionTagError),
     #[error(display = "{}", _0)]
     NamespaceNotFound(#[error(source)] extract::NamespaceNotFoundError),
-    #[error(display = "{}", _0)]
+}
+
+#[derive(Debug, Error)]
+enum SiteinfoError {
+    #[error(display = "cannot connect: {}", _0)]
+    New(#[error(source)] siteinfo::EndpointNewError),
+    #[error(display = "cannot fetch: {}", _0)]
+    Fetch(#[error(source)] reqwest::Error),
+    #[error(display = "invalid response: {}", _0)]
     QueryFromResponse(#[error(source)] siteinfo::QueryFromResponseError),
-    #[error(display = "{}", _0)]
-    Reqwest(#[error(source)] reqwest::Error),
-    #[error(display = "{}", _0)]
-    SiteinfoNew(#[error(source)] siteinfo::NewError),
 }
 
 impl Args {
@@ -97,12 +107,16 @@ fn main() {
 }
 
 fn run() -> Result<(), Error> {
-    let log_var = log_initialize()?;
+    let log_var = log_initialize();
     let args = Args::parse(&log_var)?;
 
     log::info!("connecting to wiki domain: {:?}", args.domain);
-    let endpoint = siteinfo::Endpoint::new(&args.domain)?;
-    let query: siteinfo::response::Query = endpoint.fetch()?.try_into()?;
+    let endpoint = siteinfo::Endpoint::new(&args.domain).map_err(SiteinfoError::from)?;
+    let query: siteinfo::response::Query = endpoint
+        .fetch()
+        .map_err(SiteinfoError::from)?
+        .try_into()
+        .map_err(SiteinfoError::from)?;
 
     for (name, value) in [
         (
@@ -121,20 +135,21 @@ fn run() -> Result<(), Error> {
         log::debug!("query {}: {}", name, value);
     }
 
-    let category_namespaces = extract::namespaces(&query, "Category")?;
+    let category_namespaces =
+        extract::namespaces(&query, "Category").map_err(ExtractError::from)?;
     log::info!(
         "category namespaces: ({}) {:?}",
         category_namespaces.len(),
         category_namespaces
     );
-    let file_namespaces = extract::namespaces(&query, "File")?;
+    let file_namespaces = extract::namespaces(&query, "File").map_err(ExtractError::from)?;
     log::info!(
         "file namespaces: ({}) {:?}",
         file_namespaces.len(),
         file_namespaces
     );
 
-    let extension_tags = extract::extension_tags(&query)?;
+    let extension_tags = extract::extension_tags(&query).map_err(ExtractError::from)?;
     log::info!(
         "extension tags: ({}) {:?}",
         extension_tags.len(),
@@ -143,8 +158,8 @@ fn run() -> Result<(), Error> {
     let protocols = extract::protocols(&query);
     log::info!("protocols: ({}) {:?}", protocols.len(), protocols);
 
-    let link_trail = extract::link_trail(&query)?;
-    if link_trail.len() <= (1 << 9) {
+    let link_trail = extract::link_trail(&query).map_err(ExtractError::from)?;
+    if link_trail.len() <= (1 << 7) {
         log::info!("link trail: ({}) {:?}", link_trail.len(), link_trail);
     } else {
         log::info!("link trail: ({})", link_trail.len());
@@ -177,7 +192,7 @@ fn run() -> Result<(), Error> {
     Ok(())
 }
 
-fn log_initialize() -> Result<String, log::SetLoggerError> {
+fn log_initialize() -> String {
     let log_var = format!("{}_LOG", clap::crate_name!().to_uppercase());
     simplelog::TermLogger::init(
         env::var(&log_var)
@@ -191,6 +206,7 @@ fn log_initialize() -> Result<String, log::SetLoggerError> {
             .build(),
         simplelog::TerminalMode::Stderr,
         simplelog::ColorChoice::Auto,
-    )?;
-    Ok(log_var)
+    )
+    .unwrap();
+    log_var
 }

@@ -65,13 +65,13 @@ pub(crate) struct Protocol(pub(crate) String);
 pub(crate) struct Errors(pub(crate) Vec<Error>);
 
 #[derive(Debug, Deserialize, Error)]
-#[error(display = "API error: [{}] {} {} ({:?})", module, code, text, data)]
+#[error(display = "siteinfo API [{}] {} {} ({:?})", module, code, text, data)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub(crate) struct Error {
-    code: String,
-    data: Option<serde_json::Value>,
-    module: String,
-    text: String,
+    pub(crate) code: String,
+    pub(crate) data: Option<serde_json::Value>,
+    pub(crate) module: String,
+    pub(crate) text: String,
 }
 
 impl fmt::Display for Errors {

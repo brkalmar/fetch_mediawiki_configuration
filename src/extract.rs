@@ -14,8 +14,6 @@ pub(crate) struct MalformedExtensionTagError(String);
 
 #[derive(Debug, Error)]
 pub(crate) enum LinkTrailError {
-    #[error(display = "{}", _0)]
-    PCRE(#[error(source)] pcre::PatternParseError),
     #[error(
         display = "group {} not found in link trail pattern: {:?}",
         index,
@@ -28,6 +26,24 @@ pub(crate) enum LinkTrailError {
         pattern
     )]
     GroupInvalid { pattern: String, index: u32 },
+    #[error(display = "link trail pattern: {}", _0)]
+    PCRE(#[error(source)] pcre::PatternParseError),
+}
+
+impl LinkTrailError {
+    fn group_not_found(pattern: &str, index: u32) -> Self {
+        Self::GroupNotFound {
+            pattern: pattern.to_owned(),
+            index: index,
+        }
+    }
+
+    fn group_invalid(pattern: &str, index: u32) -> Self {
+        Self::GroupInvalid {
+            pattern: pattern.to_owned(),
+            index: index,
+        }
+    }
 }
 
 pub(crate) fn namespaces(
@@ -77,37 +93,26 @@ pub(crate) fn link_trail(
     use hir::HirKind::*;
 
     let original = &query.general.linktrail;
-    let pattern: pcre::Pattern = original.parse().map_err(LinkTrailError::PCRE)?;
+    let pattern: pcre::Pattern = original.parse()?;
     log::debug!("pattern = {:?}", pattern);
 
     const GROUP_INDEX: u32 = 1;
-    let group =
-        pattern
-            .hir
-            .find_group_index(GROUP_INDEX)
-            .ok_or_else(|| LinkTrailError::GroupNotFound {
-                pattern: original.clone(),
-                index: GROUP_INDEX,
-            })?;
+    let group = pattern
+        .hir
+        .find_group_index(GROUP_INDEX)
+        .ok_or_else(|| LinkTrailError::group_not_found(original, GROUP_INDEX))?;
     let repeated = match group.hir.kind() {
         Empty => Ok(None),
         Repetition(repetition) => Ok(Some(&repetition.hir)),
         Alternation(..) | Anchor(..) | Class(..) | Concat(..) | Group(..) | Literal(..)
-        | WordBoundary(..) => Err(LinkTrailError::GroupInvalid {
-            pattern: original.clone(),
-            index: GROUP_INDEX,
-        }),
+        | WordBoundary(..) => Err(LinkTrailError::group_invalid(original, GROUP_INDEX)),
     }?;
     log::debug!("repeated = {:?}", repeated.map(|r| pcre::HirDebugAlt(r)));
 
     let mut characters = Default::default();
     if let Some(repeated) = repeated {
-        link_trail_characters(repeated, &mut characters).map_err(|_| {
-            LinkTrailError::GroupInvalid {
-                pattern: original.clone(),
-                index: GROUP_INDEX,
-            }
-        })?;
+        link_trail_characters(repeated, &mut characters)
+            .map_err(|_| LinkTrailError::group_invalid(original, GROUP_INDEX))?;
     }
     Ok(characters)
 }

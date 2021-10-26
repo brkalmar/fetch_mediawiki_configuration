@@ -10,7 +10,7 @@ pub(crate) struct Endpoint {
 }
 
 #[derive(Debug, Error)]
-pub(crate) enum NewError {
+pub(crate) enum EndpointNewError {
     #[error(display = "{}", _0)]
     Reqwest(#[error(source)] reqwest::Error),
     #[error(display = "{}", _0)]
@@ -57,7 +57,7 @@ impl Endpoint {
             .error_for_status()
     }
 
-    pub(crate) fn new(domain: &str) -> Result<Self, NewError> {
+    pub(crate) fn new(domain: &str) -> Result<Self, EndpointNewError> {
         let client = Self::new_client()?;
         let url = Self::new_url(domain)?;
         log::debug!("url = {}", url);
