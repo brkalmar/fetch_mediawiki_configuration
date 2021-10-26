@@ -2,7 +2,9 @@
 authors = ["Bence Kalmar <bkalmar1996@gmail.com>"]
 description = "Generate `parse_wiki_text` configuration code for a MediaWiki wiki"
 edition = "2018"
+license = "MIT"
 name = "fetch_mediawiki_configuration"
+repository = "https://github.com/brkalmar/fetch_mediawiki_configuration"
 version = "0.1.0"
 
 [dependencies.clap]
