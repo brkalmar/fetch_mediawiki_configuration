@@ -1,9 +1,9 @@
 use err_derive::Error;
-use io::Write;
 use std::{env, io, process};
 
 mod api;
 mod extract;
+mod generate;
 
 #[derive(Debug)]
 struct Args {
@@ -90,33 +90,11 @@ fn run() -> Result<(), Error> {
 
     log::info!("connecting to wiki domain: {:?} ...", args.domain);
     let query = api::fetch_query(&args.domain)?;
-    let source = extract::configuration_source(&query)?;
-
-    let mut out = io::stdout();
+    let configuration_source = extract::configuration_source(&query)?;
 
     log::info!("writing `ConfigurationSource` to stdout ...");
-    let tokens = {
-        let category_namespaces = &source.category_namespaces;
-        let extension_tags = &source.extension_tags;
-        let file_namespaces = &source.file_namespaces;
-        let link_trail: String = source.link_trail.iter().collect();
-        let magic_words = &source.magic_words;
-        let protocols = &source.protocols;
-        let redirect_magic_words = &source.redirect_magic_words;
-
-        quote::quote! {
-            ::parse_wiki_text::ConfigurationSource {
-                category_namespaces: &[ #( #category_namespaces ),* ],
-                extension_tags: &[ #( #extension_tags ),* ],
-                file_namespaces: &[ #( #file_namespaces ),* ],
-                link_trail: #link_trail ,
-                magic_words: &[ #( #magic_words ),* ],
-                protocols: &[ #( #protocols ),* ],
-                redirect_magic_words: &[ #( #redirect_magic_words ),* ],
-            }
-        }
-    };
-    write!(out, "{}", tokens)?;
+    let out = io::stdout();
+    generate::configuration_source(out, &configuration_source)?;
 
     Ok(())
 }
