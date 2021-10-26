@@ -8,6 +8,7 @@ mod generate;
 #[derive(Debug)]
 struct Args {
     domain: String,
+    log_level: log::LevelFilter,
 }
 
 #[derive(Debug, Error)]
@@ -25,23 +26,23 @@ enum Error {
 }
 
 impl Args {
-    fn parse(log_var: &str) -> Result<Self, clap::Error> {
+    fn parse() -> Result<Self, clap::Error> {
+        use log::LevelFilter::*;
+
+        let log_levels: Vec<_> = [Off, Error, Warn, Info, Debug, Trace]
+            .iter()
+            .map(|l| l.as_str())
+            .collect();
+
         let matches = clap::App::new(clap::crate_name!())
             .about(clap::crate_description!())
             .long_about(
-                format!(
-                    "\
-                    Fetch the site configuration of a MediaWiki based wiki, and output rust code \
-                    for creating a configuration for `parse_wiki_text` specific to that wiki.  \
-                    Write generated code to stdout, as a constant expression of type \
-                    `parse_wiki_text::ConfigurationSource`.  Write log messages to stderr.\
-                    \n\n\
-                    Maximum log level can be set in env variable `{}` to one of `off`, `error`, \
-                    `warn`, `info`, `debug`, `trace`.\
-                    ",
-                    log_var
-                )
-                .as_ref(),
+                "\
+                Fetch the site configuration of a MediaWiki based wiki, and output rust code for \
+                creating a configuration for `parse_wiki_text` specific to that wiki.   Write \
+                generated code to stdout, as a constant expression of type \
+                `parse_wiki_text::ConfigurationSource`.  Write log messages to stderr.\
+                ",
             )
             .version(clap::crate_version!())
             .arg(
@@ -49,10 +50,19 @@ impl Args {
                     .help("The domain name of the wiki (e.g. `en.wikipedia.org`)")
                     .required(true),
             )
+            .arg(
+                clap::Arg::with_name("log-level")
+                    .long("log-level")
+                    .help("Maximum log level")
+                    .case_insensitive(true)
+                    .default_value(Info.as_str())
+                    .possible_values(&log_levels),
+            )
             .get_matches_safe()?;
 
         let domain = clap::value_t!(matches.value_of("domain"), _)?;
-        Ok(Self { domain })
+        let log_level = clap::value_t!(matches.value_of("log-level"), _)?;
+        Ok(Self { domain, log_level })
     }
 }
 
@@ -85,8 +95,8 @@ fn main() {
 }
 
 fn run() -> Result<(), Error> {
-    let log_var = log_initialize();
-    let args = Args::parse(&log_var)?;
+    let args = Args::parse()?;
+    log_initialize(args.log_level);
 
     log::info!("connecting to wiki domain: {:?} ...", args.domain);
     let query = api::fetch_query(&args.domain)?;
@@ -99,21 +109,16 @@ fn run() -> Result<(), Error> {
     Ok(())
 }
 
-fn log_initialize() -> String {
-    let log_var = format!("{}_LOG", clap::crate_name!().to_uppercase());
+fn log_initialize(level: log::LevelFilter) {
     simplelog::TermLogger::init(
-        env::var(&log_var)
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(simplelog::LevelFilter::Info),
+        level,
         simplelog::ConfigBuilder::default()
             .set_level_padding(simplelog::LevelPadding::Left)
-            .set_thread_level(simplelog::LevelFilter::Trace)
+            .set_thread_level(log::LevelFilter::Trace)
             .set_thread_mode(simplelog::ThreadLogMode::Both)
             .build(),
         simplelog::TerminalMode::Stderr,
         simplelog::ColorChoice::Auto,
     )
     .unwrap();
-    log_var
 }
