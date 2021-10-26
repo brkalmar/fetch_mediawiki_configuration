@@ -11,8 +11,11 @@ Inferences and assumptions made are documented under [Implementation notes](#imp
 
 ## Usage
 
-Use `cargo run --` followed by the arguments to run the script.
-Pass argument `--help` for more information:
+The project uses the [cargo package manager](https://doc.rust-lang.org/cargo).
+Build and run in the usual manner.
+
+Pass command line argument `--help` for more usage information.
+For example:
 ```shell
 cargo run -- --help
 ```
@@ -50,7 +53,9 @@ These fields must contain the primary and canoncial namespace names in addition 
 
 `link_trail` is extracted from `siprop=general` under key `linktrail`.
 
-This is a [PHP PCRE](https://www.php.net/manual/en/book.pcre.php) pattern containing two groups: (1) the trailing section to be a part of the link it follows, (2) everything after.
+This is a [PHP PCRE](https://www.php.net/manual/en/book.pcre.php) pattern containing two groups:
+1. the trailing section, to be a part of the link it follows
+2. everything after
 
 We do some simple parsing of the pattern using the [regex-syntax](https://crates.io/crates/regex-syntax) crate.
 The [modifiers](https://www.php.net/manual/en/reference.pcre.pattern.modifiers.php) are also parsed and used where applicable.
@@ -58,15 +63,15 @@ If group 1 is empty, the link trail has no characters.
 If it is a repetiton structure, the repeated part is extracted recursively, only allowing constructs that yield single-character sequences.
 Otherwise, the regex is considered invalid.
 
-### Limitations
+#### Limitations
 
 This approach only accepts regexes with a specific structure, and does not take into account differences between PHP PCREs and rust regexes.
-However, the patterns are not expected to be diverse enough to cause problems with respect to structure, nor complex enough for the syntax differences to surface.
+However, the patterns are not expected to be diverse enough to cause problems with respect to structure, nor complex enough for the syntax differences to matter.
 These differences are for the most part minor or edge cases, since both syntaxes derive directly from Perl regexes.
 
 A more serious limitation is that `link_trail` cannot store anything more complicated than a simple set of characters.
 If the repeated part in the regex contains concatenations, lookaheads, or similar, it cannot be represented in the field, and a fatal error results.
-This does affect a few actual wiki instances (try e.g. [`ca.wiktionary.org`](https://ca.wiktionary.org) or [`se.wikipedia.org`](https://se.wikipedia.org)), but as it is a limitation of `parse_wiki_text` there is currently no way to solve it.
+This does affect a few actual wiki instances (try e.g. [`ca.wiktionary.org`](https://ca.wiktionary.org) or [`se.wikipedia.org`](https://se.wikipedia.org)), but as it is a limitation of `parse_wiki_text` there is currently no way around it.
 
 ### Magic words
 

@@ -39,7 +39,7 @@ impl Args {
             .long_about(
                 "\
                 Fetch the site configuration of a MediaWiki based wiki, and output rust code for \
-                creating a configuration for `parse_wiki_text` specific to that wiki.   Write \
+                creating a configuration for `parse_wiki_text` specific to that wiki.  Write \
                 generated code to stdout, as a constant expression of type \
                 `parse_wiki_text::ConfigurationSource`.  Write log messages to stderr.\
                 ",
