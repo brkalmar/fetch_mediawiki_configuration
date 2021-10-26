@@ -5,73 +5,73 @@ use std::{collections, error, fmt};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub(crate) struct Response {
-    pub(super) query: Option<Box<serde_json::value::RawValue>>,
+pub struct Response {
+    pub query: Option<Box<serde_json::value::RawValue>>,
 
-    pub(super) errors: Option<Errors>,
-    pub(super) warnings: Option<Errors>,
+    pub errors: Option<Errors>,
+    pub warnings: Option<Errors>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub(crate) struct Query {
-    pub(crate) extensiontags: Vec<ExtensionTag>,
-    pub(crate) general: General,
-    pub(crate) magicwords: Vec<MagicWord>,
-    pub(crate) namespacealiases: Vec<NamespaceAlias>,
-    pub(crate) namespaces: collections::BTreeMap<String, Namespace>,
-    pub(crate) protocols: Vec<Protocol>,
+pub struct Query {
+    pub extensiontags: Vec<ExtensionTag>,
+    pub general: General,
+    pub magicwords: Vec<MagicWord>,
+    pub namespacealiases: Vec<NamespaceAlias>,
+    pub namespaces: collections::BTreeMap<String, Namespace>,
+    pub protocols: Vec<Protocol>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(transparent)]
-pub(crate) struct ExtensionTag(pub(crate) String);
+pub struct ExtensionTag(pub String);
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub(crate) struct General {
-    pub(crate) linktrail: String,
+pub struct General {
+    pub linktrail: String,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub(crate) struct MagicWord {
-    pub(crate) aliases: Vec<String>,
-    pub(crate) case_sensitive: Option<bool>,
-    pub(crate) name: String,
+pub struct MagicWord {
+    pub aliases: Vec<String>,
+    pub case_sensitive: Option<bool>,
+    pub name: String,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub(crate) struct NamespaceAlias {
-    pub(crate) id: i64,
-    pub(crate) alias: String,
+pub struct NamespaceAlias {
+    pub id: i64,
+    pub alias: String,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub(crate) struct Namespace {
-    pub(crate) id: i64,
-    pub(crate) name: String,
-    pub(crate) canonical: Option<String>,
+pub struct Namespace {
+    pub id: i64,
+    pub name: String,
+    pub canonical: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(transparent)]
-pub(crate) struct Protocol(pub(crate) String);
+pub struct Protocol(pub String);
 
 #[derive(Debug, Deserialize)]
 #[serde(transparent)]
-pub(crate) struct Errors(pub(crate) Vec<Error>);
+pub struct Errors(pub Vec<Error>);
 
 #[derive(Debug, Deserialize, Error)]
 #[error(display = "siteinfo API [{}] {} {} ({:?})", module, code, text, data)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub(crate) struct Error {
-    pub(crate) code: String,
-    pub(crate) data: Option<serde_json::Value>,
-    pub(crate) module: String,
-    pub(crate) text: String,
+pub struct Error {
+    pub code: String,
+    pub data: Option<serde_json::Value>,
+    pub module: String,
+    pub text: String,
 }
 
 impl fmt::Display for Errors {

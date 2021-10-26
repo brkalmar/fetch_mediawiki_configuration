@@ -3,15 +3,15 @@ use err_derive::Error;
 use itertools::Itertools;
 use std::{convert, env};
 
-pub(crate) mod response;
+pub mod response;
 
-pub(crate) struct Endpoint {
+struct Endpoint {
     client: reqwest::blocking::Client,
     url: url::Url,
 }
 
 #[derive(Debug, Error)]
-pub(crate) enum Error {
+pub enum Error {
     #[error(display = "cannot connect: {}", _0)]
     New(#[error(source)] EndpointNewError),
     #[error(display = "cannot fetch: {}", _0)]
@@ -21,7 +21,7 @@ pub(crate) enum Error {
 }
 
 #[derive(Debug, Error)]
-pub(crate) enum EndpointNewError {
+pub enum EndpointNewError {
     #[error(display = "{}", _0)]
     Reqwest(#[error(source)] reqwest::Error),
     #[error(display = "{}", _0)]
@@ -29,7 +29,7 @@ pub(crate) enum EndpointNewError {
 }
 
 #[derive(Debug, Error)]
-pub(crate) enum QueryFromResponseError {
+pub enum QueryFromResponseError {
     #[error(display = "{}", _0)]
     Json(#[error(source)] serde_json::Error),
     #[error(display = "no errors or warnings, and no query found")]
@@ -39,7 +39,7 @@ pub(crate) enum QueryFromResponseError {
 }
 
 impl Endpoint {
-    pub(crate) fn fetch(&self) -> Result<response::Response, reqwest::Error> {
+    fn fetch(&self) -> Result<response::Response, reqwest::Error> {
         let response = self.fetch_response()?;
         log::info!("response status: {}", response.status());
 
@@ -68,7 +68,7 @@ impl Endpoint {
             .error_for_status()
     }
 
-    pub(crate) fn new(domain: &str) -> Result<Self, EndpointNewError> {
+    fn new(domain: &str) -> Result<Self, EndpointNewError> {
         let client = Self::new_client()?;
         let url = Self::new_url(domain)?;
         log::debug!("url = {}", url);
@@ -137,7 +137,7 @@ impl convert::TryFrom<response::Response> for response::Query {
     }
 }
 
-pub(crate) fn fetch_query(domain: &str) -> Result<response::Query, Error> {
+pub fn fetch_query(domain: &str) -> Result<response::Query, Error> {
     let endpoint = Endpoint::new(&domain)?;
     let query: response::Query = endpoint.fetch()?.try_into()?;
 

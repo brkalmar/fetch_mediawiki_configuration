@@ -3,11 +3,11 @@ use regex_syntax::{ast, hir};
 use std::fmt;
 
 mod private {
-    pub(crate) trait Sealed {}
+    pub trait Sealed {}
 }
 
-pub(crate) struct Pattern {
-    pub(crate) hir: hir::Hir,
+pub struct Pattern {
+    pub hir: hir::Hir,
     modifiers: Modifiers,
 }
 
@@ -35,17 +35,17 @@ struct Modifiers {
     info_jchanged: bool,
 }
 
-pub(crate) struct HirDebugAlt<'h>(pub(crate) &'h hir::Hir);
+pub struct HirDebugAlt<'h>(pub &'h hir::Hir);
 
 #[derive(Debug, Error)]
 #[error(display = "{}: {:?}", kind, pattern)]
-pub(crate) struct PatternParseError {
-    pub(crate) pattern: String,
-    pub(crate) kind: PatternParseErrorKind,
+pub struct PatternParseError {
+    pub pattern: String,
+    pub kind: PatternParseErrorKind,
 }
 
 #[derive(Debug)]
-pub(crate) enum PatternParseErrorKind {
+pub enum PatternParseErrorKind {
     ModifierUnsupported(char),
     Modifiers(ModifiersParseError),
     Pattern,
@@ -54,9 +54,9 @@ pub(crate) enum PatternParseErrorKind {
 
 #[derive(Debug, Error)]
 #[error(display = "unrecognized PHP PCRE modifier: {:?}", _0)]
-pub(crate) struct ModifiersParseError(pub(crate) char);
+pub struct ModifiersParseError(char);
 
-pub(crate) trait HirExt: private::Sealed {
+pub trait HirExt: private::Sealed {
     fn find_group_index(&self, index: u32) -> Option<&hir::Group>;
 }
 

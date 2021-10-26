@@ -7,18 +7,18 @@ use std::{collections, iter};
 mod pcre;
 
 #[derive(Debug)]
-pub(crate) struct ConfigurationSource {
-    pub(crate) category_namespaces: collections::BTreeSet<String>,
-    pub(crate) extension_tags: collections::BTreeSet<String>,
-    pub(crate) file_namespaces: collections::BTreeSet<String>,
-    pub(crate) link_trail: collections::BTreeSet<char>,
-    pub(crate) magic_words: collections::BTreeSet<String>,
-    pub(crate) protocols: collections::BTreeSet<String>,
-    pub(crate) redirect_magic_words: collections::BTreeSet<String>,
+pub struct ConfigurationSource {
+    pub category_namespaces: collections::BTreeSet<String>,
+    pub extension_tags: collections::BTreeSet<String>,
+    pub file_namespaces: collections::BTreeSet<String>,
+    pub link_trail: collections::BTreeSet<char>,
+    pub magic_words: collections::BTreeSet<String>,
+    pub protocols: collections::BTreeSet<String>,
+    pub redirect_magic_words: collections::BTreeSet<String>,
 }
 
 #[derive(Debug, Error)]
-pub(crate) enum Error {
+pub enum Error {
     #[error(display = "{}", _0)]
     LinkTrail(#[error(source)] LinkTrailError),
     #[error(display = "{}", _0)]
@@ -29,14 +29,14 @@ pub(crate) enum Error {
 
 #[derive(Debug, Error)]
 #[error(display = "namespace not found: {:?}", _0)]
-pub(crate) struct NamespaceNotFoundError(String);
+pub struct NamespaceNotFoundError(pub String);
 
 #[derive(Debug, Error)]
 #[error(display = "malformed extension tag: {:?}", _0)]
-pub(crate) struct MalformedExtensionTagError(String);
+pub struct MalformedExtensionTagError(pub String);
 
 #[derive(Debug, Error)]
-pub(crate) enum LinkTrailError {
+pub enum LinkTrailError {
     #[error(
         display = "group {} not found in link trail pattern: {:?}",
         index,
@@ -69,9 +69,7 @@ impl LinkTrailError {
     }
 }
 
-pub(crate) fn configuration_source(
-    query: &api::response::Query,
-) -> Result<ConfigurationSource, Error> {
+pub fn configuration_source(query: &api::response::Query) -> Result<ConfigurationSource, Error> {
     let category_namespaces = namespaces(&query, "Category")?;
     log::debug!(
         "category namespaces: ({}) {:?}",
@@ -121,7 +119,7 @@ pub(crate) fn configuration_source(
     })
 }
 
-pub(crate) fn namespaces(
+fn namespaces(
     query: &api::response::Query,
     canonical: &str,
 ) -> Result<collections::BTreeSet<String>, NamespaceNotFoundError> {
@@ -142,7 +140,7 @@ pub(crate) fn namespaces(
     Ok(names.collect())
 }
 
-pub(crate) fn extension_tags(
+fn extension_tags(
     query: &api::response::Query,
 ) -> Result<collections::BTreeSet<String>, MalformedExtensionTagError> {
     query
@@ -158,13 +156,11 @@ pub(crate) fn extension_tags(
         .collect()
 }
 
-pub(crate) fn protocols(query: &api::response::Query) -> collections::BTreeSet<String> {
+fn protocols(query: &api::response::Query) -> collections::BTreeSet<String> {
     query.protocols.iter().map(|p| p.0.to_lowercase()).collect()
 }
 
-pub(crate) fn link_trail(
-    query: &api::response::Query,
-) -> Result<collections::BTreeSet<char>, LinkTrailError> {
+fn link_trail(query: &api::response::Query) -> Result<collections::BTreeSet<char>, LinkTrailError> {
     use hir::HirKind::*;
 
     let original = &query.general.linktrail;
@@ -238,7 +234,7 @@ fn link_trail_characters(
     }
 }
 
-pub(crate) fn magic_words(query: &api::response::Query) -> collections::BTreeSet<String> {
+fn magic_words(query: &api::response::Query) -> collections::BTreeSet<String> {
     query
         .magicwords
         .iter()
@@ -253,7 +249,7 @@ pub(crate) fn magic_words(query: &api::response::Query) -> collections::BTreeSet
         .collect()
 }
 
-pub(crate) fn magic_words_redirect(query: &api::response::Query) -> collections::BTreeSet<String> {
+fn magic_words_redirect(query: &api::response::Query) -> collections::BTreeSet<String> {
     const NAME: &str = "redirect";
     const PREFIX: &str = "#";
     query
