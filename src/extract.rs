@@ -4,6 +4,27 @@ use pcre::HirExt;
 use regex_syntax::hir;
 use std::{collections, iter};
 
+#[derive(Debug)]
+pub(crate) struct ConfigurationSource {
+    pub(crate) category_namespaces: collections::BTreeSet<String>,
+    pub(crate) extension_tags: collections::BTreeSet<String>,
+    pub(crate) file_namespaces: collections::BTreeSet<String>,
+    pub(crate) link_trail: collections::BTreeSet<char>,
+    pub(crate) magic_words: collections::BTreeSet<String>,
+    pub(crate) protocols: collections::BTreeSet<String>,
+    pub(crate) redirect_magic_words: collections::BTreeSet<String>,
+}
+
+#[derive(Debug, Error)]
+pub(crate) enum Error {
+    #[error(display = "{}", _0)]
+    LinkTrail(#[error(source)] LinkTrailError),
+    #[error(display = "{}", _0)]
+    MalformedExtensionTag(#[error(source)] MalformedExtensionTagError),
+    #[error(display = "{}", _0)]
+    NamespaceNotFound(#[error(source)] NamespaceNotFoundError),
+}
+
 #[derive(Debug, Error)]
 #[error(display = "namespace not found: {:?}", _0)]
 pub(crate) struct NamespaceNotFoundError(String);
@@ -44,6 +65,58 @@ impl LinkTrailError {
             index: index,
         }
     }
+}
+
+pub(crate) fn configuration_source(
+    query: &siteinfo::response::Query,
+) -> Result<ConfigurationSource, Error> {
+    let category_namespaces = namespaces(&query, "Category")?;
+    log::debug!(
+        "category namespaces: ({}) {:?}",
+        category_namespaces.len(),
+        category_namespaces
+    );
+    let file_namespaces = namespaces(&query, "File")?;
+    log::debug!(
+        "file namespaces: ({}) {:?}",
+        file_namespaces.len(),
+        file_namespaces
+    );
+
+    let extension_tags = extension_tags(&query)?;
+    log::debug!(
+        "extension tags: ({}) {:?}",
+        extension_tags.len(),
+        extension_tags
+    );
+    let protocols = protocols(&query);
+    log::debug!("protocols: ({}) {:?}", protocols.len(), protocols);
+
+    let link_trail = link_trail(&query)?;
+    if link_trail.len() <= (1 << 7) {
+        log::debug!("link trail: ({}) {:?}", link_trail.len(), link_trail);
+    } else {
+        log::debug!("link trail: ({})", link_trail.len());
+    }
+
+    let magic_words = magic_words(&query);
+    log::debug!("magic words: ({}) {:?}", magic_words.len(), magic_words);
+    let redirect_magic_words = magic_words_redirect(&query);
+    log::debug!(
+        "redirect magic words: ({}) {:?}",
+        redirect_magic_words.len(),
+        redirect_magic_words
+    );
+
+    Ok(ConfigurationSource {
+        category_namespaces,
+        extension_tags,
+        file_namespaces,
+        link_trail,
+        magic_words,
+        protocols,
+        redirect_magic_words,
+    })
 }
 
 pub(crate) fn namespaces(
