@@ -3,9 +3,8 @@ use err_derive::Error;
 use io::Write;
 use std::{convert, env, io, process};
 
+mod api;
 mod extract;
-mod pcre;
-mod siteinfo;
 
 #[derive(Debug)]
 struct Args {
@@ -22,18 +21,18 @@ enum Error {
     Io(#[error(source)] io::Error),
     #[error(display = "cannot extract configuration data: {}", _0)]
     Extract(#[error(source)] extract::Error),
-    #[error(display = "siteinfo endpoint: {}", _0)]
-    Siteinfo(#[error(source)] SiteinfoError),
+    #[error(display = "API endpoint: {}", _0)]
+    API(#[error(source)] APIError),
 }
 
 #[derive(Debug, Error)]
-enum SiteinfoError {
+enum APIError {
     #[error(display = "cannot connect: {}", _0)]
-    New(#[error(source)] siteinfo::EndpointNewError),
+    New(#[error(source)] api::EndpointNewError),
     #[error(display = "cannot fetch: {}", _0)]
     Fetch(#[error(source)] reqwest::Error),
     #[error(display = "invalid response: {}", _0)]
-    QueryFromResponse(#[error(source)] siteinfo::QueryFromResponseError),
+    QueryFromResponse(#[error(source)] api::QueryFromResponseError),
 }
 
 impl Args {
@@ -101,12 +100,12 @@ fn run() -> Result<(), Error> {
     let args = Args::parse(&log_var)?;
 
     log::info!("connecting to wiki domain: {:?}", args.domain);
-    let endpoint = siteinfo::Endpoint::new(&args.domain).map_err(SiteinfoError::from)?;
-    let query: siteinfo::response::Query = endpoint
+    let endpoint = api::Endpoint::new(&args.domain).map_err(APIError::from)?;
+    let query: api::response::Query = endpoint
         .fetch()
-        .map_err(SiteinfoError::from)?
+        .map_err(APIError::from)?
         .try_into()
-        .map_err(SiteinfoError::from)?;
+        .map_err(APIError::from)?;
 
     for (name, value) in [
         (

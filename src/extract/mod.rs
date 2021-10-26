@@ -1,8 +1,10 @@
-use crate::{pcre, siteinfo};
+use crate::api;
 use err_derive::Error;
 use pcre::HirExt;
 use regex_syntax::hir;
 use std::{collections, iter};
+
+mod pcre;
 
 #[derive(Debug)]
 pub(crate) struct ConfigurationSource {
@@ -68,7 +70,7 @@ impl LinkTrailError {
 }
 
 pub(crate) fn configuration_source(
-    query: &siteinfo::response::Query,
+    query: &api::response::Query,
 ) -> Result<ConfigurationSource, Error> {
     let category_namespaces = namespaces(&query, "Category")?;
     log::debug!(
@@ -120,7 +122,7 @@ pub(crate) fn configuration_source(
 }
 
 pub(crate) fn namespaces(
-    query: &siteinfo::response::Query,
+    query: &api::response::Query,
     canonical: &str,
 ) -> Result<collections::BTreeSet<String>, NamespaceNotFoundError> {
     let namespace = query
@@ -141,7 +143,7 @@ pub(crate) fn namespaces(
 }
 
 pub(crate) fn extension_tags(
-    query: &siteinfo::response::Query,
+    query: &api::response::Query,
 ) -> Result<collections::BTreeSet<String>, MalformedExtensionTagError> {
     query
         .extensiontags
@@ -156,12 +158,12 @@ pub(crate) fn extension_tags(
         .collect()
 }
 
-pub(crate) fn protocols(query: &siteinfo::response::Query) -> collections::BTreeSet<String> {
+pub(crate) fn protocols(query: &api::response::Query) -> collections::BTreeSet<String> {
     query.protocols.iter().map(|p| p.0.to_lowercase()).collect()
 }
 
 pub(crate) fn link_trail(
-    query: &siteinfo::response::Query,
+    query: &api::response::Query,
 ) -> Result<collections::BTreeSet<char>, LinkTrailError> {
     use hir::HirKind::*;
 
@@ -236,7 +238,7 @@ fn link_trail_characters(
     }
 }
 
-pub(crate) fn magic_words(query: &siteinfo::response::Query) -> collections::BTreeSet<String> {
+pub(crate) fn magic_words(query: &api::response::Query) -> collections::BTreeSet<String> {
     query
         .magicwords
         .iter()
@@ -251,9 +253,7 @@ pub(crate) fn magic_words(query: &siteinfo::response::Query) -> collections::BTr
         .collect()
 }
 
-pub(crate) fn magic_words_redirect(
-    query: &siteinfo::response::Query,
-) -> collections::BTreeSet<String> {
+pub(crate) fn magic_words_redirect(query: &api::response::Query) -> collections::BTreeSet<String> {
     const NAME: &str = "redirect";
     const PREFIX: &str = "#";
     query
