@@ -50,58 +50,58 @@ pub enum LinkTrailError {
     )]
     GroupInvalid { pattern: String, index: u32 },
     #[error(display = "link trail pattern: {}", _0)]
-    PCRE(#[error(source)] pcre::PatternParseError),
+    Pcre(#[error(source)] pcre::PatternParseError),
 }
 
 impl LinkTrailError {
     fn group_not_found(pattern: &str, index: u32) -> Self {
         Self::GroupNotFound {
             pattern: pattern.to_owned(),
-            index: index,
+            index,
         }
     }
 
     fn group_invalid(pattern: &str, index: u32) -> Self {
         Self::GroupInvalid {
             pattern: pattern.to_owned(),
-            index: index,
+            index,
         }
     }
 }
 
 pub fn configuration_source(query: &api::response::Query) -> Result<ConfigurationSource, Error> {
-    let category_namespaces = namespaces(&query, "Category")?;
+    let category_namespaces = namespaces(query, "Category")?;
     log::debug!(
         "category namespaces: ({}) {:?}",
         category_namespaces.len(),
         category_namespaces
     );
-    let file_namespaces = namespaces(&query, "File")?;
+    let file_namespaces = namespaces(query, "File")?;
     log::debug!(
         "file namespaces: ({}) {:?}",
         file_namespaces.len(),
         file_namespaces
     );
 
-    let extension_tags = extension_tags(&query)?;
+    let extension_tags = extension_tags(query)?;
     log::debug!(
         "extension tags: ({}) {:?}",
         extension_tags.len(),
         extension_tags
     );
-    let protocols = protocols(&query);
+    let protocols = protocols(query);
     log::debug!("protocols: ({}) {:?}", protocols.len(), protocols);
 
-    let link_trail = link_trail(&query)?;
+    let link_trail = link_trail(query)?;
     if link_trail.len() <= (1 << 7) {
         log::debug!("link trail: ({}) {:?}", link_trail.len(), link_trail);
     } else {
         log::debug!("link trail: ({}) {{...}}", link_trail.len());
     }
 
-    let magic_words = magic_words(&query);
+    let magic_words = magic_words(query);
     log::debug!("magic words: ({}) {:?}", magic_words.len(), magic_words);
-    let redirect_magic_words = magic_words_redirect(&query);
+    let redirect_magic_words = magic_words_redirect(query);
     log::debug!(
         "redirect magic words: ({}) {:?}",
         redirect_magic_words.len(),
@@ -148,10 +148,10 @@ fn extension_tags(
         .iter()
         .map(|et| {
             et.0.as_str()
-                .strip_prefix("<")
-                .and_then(|s| s.strip_suffix(">"))
+                .strip_prefix('<')
+                .and_then(|s| s.strip_suffix('>'))
                 .map(str::to_lowercase)
-                .ok_or(MalformedExtensionTagError(et.0.clone()))
+                .ok_or_else(|| MalformedExtensionTagError(et.0.clone()))
         })
         .collect()
 }

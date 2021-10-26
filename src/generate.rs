@@ -14,7 +14,7 @@ pub fn configuration_source(
         protocols,
         redirect_magic_words,
     } = configuration_source;
-    let link_trail: String = link_trail.into_iter().collect();
+    let link_trail: String = link_trail.iter().collect();
 
     let tokens = quote::quote! {
         ::parse_wiki_text::ConfigurationSource {

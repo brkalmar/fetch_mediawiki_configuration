@@ -133,7 +133,7 @@ impl convert::TryFrom<response::Response> for response::Query {
 }
 
 pub fn fetch_query(domain: &str) -> Result<response::Query, Error> {
-    let endpoint = Endpoint::new(&domain)?;
+    let endpoint = Endpoint::new(domain)?;
     let query: response::Query = endpoint.fetch()?.try_into()?;
 
     for (name, value) in [

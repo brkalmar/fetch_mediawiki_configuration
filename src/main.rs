@@ -22,7 +22,7 @@ enum Error {
     #[error(display = "cannot extract configuration data: {}", _0)]
     Extract(#[error(source)] extract::Error),
     #[error(display = "API endpoint: {}", _0)]
-    API(#[error(source)] api::Error),
+    Api(#[error(source)] api::Error),
 }
 
 impl Args {
@@ -71,7 +71,7 @@ impl From<clap::Error> for Error {
         use clap::ErrorKind::*;
         match e.kind {
             HelpDisplayed | VersionDisplayed => Self::ClapDisplayed(e),
-            _ => Self::Clap(e.into()),
+            _ => Self::Clap(e),
         }
     }
 }
