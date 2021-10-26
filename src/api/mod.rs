@@ -41,7 +41,6 @@ pub enum QueryFromResponseError {
 impl Endpoint {
     fn fetch(&self) -> Result<response::Response, reqwest::Error> {
         let response = self.fetch_response()?;
-        log::info!("response status: {}", response.status());
 
         for name in [
             reqwest::header::CONNECTION,
@@ -51,11 +50,7 @@ impl Endpoint {
             reqwest::header::SERVER,
             reqwest::header::HeaderName::from_static("mediawiki-api-error"),
         ] {
-            log::debug!(
-                "response header: {:?}: {:?}",
-                name,
-                response.headers().get(&name)
-            );
+            log::debug!("response {:?}: {:?}", name, response.headers().get(&name));
         }
 
         response.json()

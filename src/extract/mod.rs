@@ -96,7 +96,7 @@ pub fn configuration_source(query: &api::response::Query) -> Result<Configuratio
     if link_trail.len() <= (1 << 7) {
         log::debug!("link trail: ({}) {:?}", link_trail.len(), link_trail);
     } else {
-        log::debug!("link trail: ({})", link_trail.len());
+        log::debug!("link trail: ({}) {{...}}", link_trail.len());
     }
 
     let magic_words = magic_words(&query);

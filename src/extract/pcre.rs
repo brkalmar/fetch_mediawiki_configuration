@@ -125,6 +125,7 @@ impl std::str::FromStr for Pattern {
         if modifiers.info_jchanged {
             return Err(PatternParseError::modifier_unsupported(s, 'J'));
         }
+        log::trace!("modifiers = {:?}", modifiers);
 
         let mut parser = ast::parse::ParserBuilder::default()
             .ignore_whitespace(modifiers.extended)

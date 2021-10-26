@@ -85,7 +85,7 @@ fn main() {
         }
         Err(Error::Clap(e)) => {
             eprint!("{}", e);
-            1
+            2
         }
         Err(e) => {
             log::error!("{}", e);
@@ -98,11 +98,12 @@ fn run() -> Result<(), Error> {
     let args = Args::parse()?;
     log_initialize(args.log_level);
 
-    log::info!("connecting to wiki domain: {:?} ...", args.domain);
+    log::info!("connect to API at wiki domain: {:?} ...", args.domain);
     let query = api::fetch_query(&args.domain)?;
+    log::info!("extract configuration data from response ...");
     let configuration_source = extract::configuration_source(&query)?;
 
-    log::info!("writing `ConfigurationSource` to stdout ...");
+    log::info!("write generated code to stdout ...");
     let out = io::stdout();
     generate::configuration_source(out, &configuration_source)?;
 
