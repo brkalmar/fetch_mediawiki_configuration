@@ -1,3 +1,4 @@
+use convert::TryInto;
 use err_derive::Error;
 use itertools::Itertools;
 use std::{convert, env};
@@ -7,6 +8,16 @@ pub(crate) mod response;
 pub(crate) struct Endpoint {
     client: reqwest::blocking::Client,
     url: url::Url,
+}
+
+#[derive(Debug, Error)]
+pub(crate) enum Error {
+    #[error(display = "cannot connect: {}", _0)]
+    New(#[error(source)] EndpointNewError),
+    #[error(display = "cannot fetch: {}", _0)]
+    Fetch(#[error(source)] reqwest::Error),
+    #[error(display = "invalid response: {}", _0)]
+    QueryFromResponse(#[error(source)] QueryFromResponseError),
 }
 
 #[derive(Debug, Error)]
@@ -124,4 +135,28 @@ impl convert::TryFrom<response::Response> for response::Query {
         )
         .map_err(Into::into)
     }
+}
+
+pub(crate) fn fetch_query(domain: &str) -> Result<response::Query, Error> {
+    let endpoint = Endpoint::new(&domain)?;
+    let query: response::Query = endpoint.fetch()?.try_into()?;
+
+    for (name, value) in [
+        (
+            "extensiontags",
+            format_args!("({})", query.extensiontags.len()),
+        ),
+        ("general", format_args!("{:?}", query.general)),
+        ("magicwords", format_args!("({})", query.magicwords.len())),
+        (
+            "namespacealiases",
+            format_args!("({})", query.namespacealiases.len()),
+        ),
+        ("namespaces", format_args!("({})", query.namespaces.len())),
+        ("protocols", format_args!("({})", query.protocols.len())),
+    ] {
+        log::debug!("query {}: {}", name, value);
+    }
+
+    Ok(query)
 }

@@ -1,7 +1,6 @@
-use convert::TryInto;
 use err_derive::Error;
 use io::Write;
-use std::{convert, env, io, process};
+use std::{env, io, process};
 
 mod api;
 mod extract;
@@ -22,17 +21,7 @@ enum Error {
     #[error(display = "cannot extract configuration data: {}", _0)]
     Extract(#[error(source)] extract::Error),
     #[error(display = "API endpoint: {}", _0)]
-    API(#[error(source)] APIError),
-}
-
-#[derive(Debug, Error)]
-enum APIError {
-    #[error(display = "cannot connect: {}", _0)]
-    New(#[error(source)] api::EndpointNewError),
-    #[error(display = "cannot fetch: {}", _0)]
-    Fetch(#[error(source)] reqwest::Error),
-    #[error(display = "invalid response: {}", _0)]
-    QueryFromResponse(#[error(source)] api::QueryFromResponseError),
+    API(#[error(source)] api::Error),
 }
 
 impl Args {
@@ -99,34 +88,13 @@ fn run() -> Result<(), Error> {
     let log_var = log_initialize();
     let args = Args::parse(&log_var)?;
 
-    log::info!("connecting to wiki domain: {:?}", args.domain);
-    let endpoint = api::Endpoint::new(&args.domain).map_err(APIError::from)?;
-    let query: api::response::Query = endpoint
-        .fetch()
-        .map_err(APIError::from)?
-        .try_into()
-        .map_err(APIError::from)?;
-
-    for (name, value) in [
-        (
-            "extensiontags",
-            format_args!("({})", query.extensiontags.len()),
-        ),
-        ("general", format_args!("{:?}", query.general)),
-        ("magicwords", format_args!("({})", query.magicwords.len())),
-        (
-            "namespacealiases",
-            format_args!("({})", query.namespacealiases.len()),
-        ),
-        ("namespaces", format_args!("({})", query.namespaces.len())),
-        ("protocols", format_args!("({})", query.protocols.len())),
-    ] {
-        log::debug!("query {}: {}", name, value);
-    }
-
+    log::info!("connecting to wiki domain: {:?} ...", args.domain);
+    let query = api::fetch_query(&args.domain)?;
     let source = extract::configuration_source(&query)?;
-    log::info!("writing ConfigurationSource to stdout");
 
+    let mut out = io::stdout();
+
+    log::info!("writing `ConfigurationSource` to stdout ...");
     let tokens = {
         let category_namespaces = &source.category_namespaces;
         let extension_tags = &source.extension_tags;
@@ -148,7 +116,6 @@ fn run() -> Result<(), Error> {
             }
         }
     };
-    let mut out = io::stdout();
     write!(out, "{}", tokens)?;
 
     Ok(())
